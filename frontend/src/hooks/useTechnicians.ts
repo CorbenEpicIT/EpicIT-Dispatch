@@ -11,6 +11,7 @@ import type {
 	UpdateTechnicianInput,
 } from "../types/technicians";
 import * as technicianApi from "../api/technicians";
+import { getDeviceCoords } from "../lib/geolocation";
 
 export const useAllTechniciansQuery = (): UseQueryResult<Technician[], Error> => {
 	return useQuery({
@@ -149,7 +150,10 @@ export const useGoAvailableMutation = (): UseMutationResult<Technician, Error, s
 export const useGoOfflineMutation = (): UseMutationResult<Technician, Error, string> => {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: (techId: string) => technicianApi.goOffline(techId),
+		mutationFn: async (techId: string) => {
+			const techCoords = await getDeviceCoords();
+			return technicianApi.goOffline(techId, techCoords ?? undefined);
+		},
 		onSuccess: (updated) => {
 			queryClient.setQueryData(["technicians", updated.id], updated);
 			queryClient.invalidateQueries({ queryKey: ["technicians"] });

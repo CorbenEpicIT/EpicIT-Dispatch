@@ -26,6 +26,7 @@ import {
 	foreignDispositionVehicleIds,
 	unknownInventoryItemsMessage,
 } from "../lib/inventory.js";
+import { applyOdometerIncrement, fetchRouteDistanceMiles } from "../lib/vehicleMileage.js";
 
 const VALID_PAUSE_REASONS = new Set<string>(["AwaitingMaterials", "EquipmentIssue", "Break", "Other"]);
 function toPauseReason(v: string | undefined): pause_reason_type | undefined {
@@ -67,37 +68,6 @@ export const buildSecondaryEventPayload = (
 };
 
 const ACTIVE_VISIT_STATUSES = ["Driving", "OnSite", "InProgress", "Paused", "Delayed"] as const;
-
-interface MapboxDirectionsResponse {
-	routes: Array<{ distance: number }>;
-	code: string;
-	message?: string;
-}
-
-async function fetchRouteDistanceMiles(
-	techCoords: { lat: number; lon: number } | null | undefined,
-	jobCoords: { lat: number; lon: number } | null | undefined,
-): Promise<number | null> {
-	const token = process.env.MAPBOX_TOKEN;
-	if (!token || !techCoords?.lat || !techCoords?.lon || !jobCoords?.lat || !jobCoords?.lon) {
-		if (!token) console.error("Missing MAPBOX_TOKEN; cannot fetch route distance.");
-		return null;
-	}
-	const coords = `${techCoords.lon},${techCoords.lat};${jobCoords.lon},${jobCoords.lat}`;
-	const url =
-		`https://api.mapbox.com/directions/v5/mapbox/driving/${coords}` +
-		`?overview=false&access_token=${token}`;
-	const controller = new AbortController();
-	const timeoutId = setTimeout(() => controller.abort(), 8_000);
-	try {
-		const resp = await fetch(url, { signal: controller.signal });
-		if (!resp.ok) return null;
-		const data = (await resp.json()) as MapboxDirectionsResponse;
-		if (data.code !== "Ok" || !data.routes.length) return null;
-		return data.routes[0].distance / 1609.34;
-	} catch { return null; }
-	finally { clearTimeout(timeoutId); }
-}
 
 export const buildVisitStatusPayload = (
 	visit: {
@@ -1773,6 +1743,9 @@ export const applyVisitTransition = async (
 			if (miles !== null) {
 				await sdb.job_visit.update({ where: { id }, data: { estimated_drive_miles: miles } });
 				updated.estimated_drive_miles = miles;
+				
+				if (context?.techId !== undefined) 
+					applyOdometerIncrement(sdb, context.techId, miles);
 			}
 		}
 		return { err: "", item: updated ?? undefined };

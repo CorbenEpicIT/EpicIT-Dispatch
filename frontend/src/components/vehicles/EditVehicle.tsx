@@ -24,6 +24,7 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 	const [color, setColor] = useState(vehicle.color ?? "");
 	const [status, setStatus] = useState<"active" | "inactive">(vehicle.status);
 	const [notes, setNotes] = useState(vehicle.notes ?? "");
+	const [odometer, setOdometer] = useState(vehicle.current_odometer_mi?.toString() ?? "");
 
 	const updateMutation = useUpdateVehicleMutation();
 	const isLoading = updateMutation.isPending;
@@ -39,6 +40,7 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 			setColor(vehicle.color ?? "");
 			setStatus(vehicle.status);
 			setNotes(vehicle.notes ?? "");
+			setOdometer(vehicle.current_odometer_mi?.toString() ?? "");
 		}
 	}, [isOpen, vehicle]);
 
@@ -54,6 +56,7 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 			color: color.trim() || null,
 			status,
 			notes: notes.trim() || null,
+			current_odometer_mi: odometer ? parseInt(odometer, 10) : null,
 		};
 		try {
 			await updateMutation.mutateAsync({ id: vehicle.id, data: input });
@@ -117,7 +120,7 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 					<div className="flex-1 h-px bg-surface" />
 				</div>
 
-				<div className="grid grid-cols-3 gap-2">
+				<div className="grid grid-cols-4 gap-2">
 					<div>
 						<label className={LABEL}>Year</label>
 						<input
@@ -144,6 +147,17 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 							type="text"
 							value={model}
 							onChange={(e) => setModel(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
+					</div>
+					<div>
+						<label className={LABEL}>Miles</label>
+						<input
+							type="number"
+							placeholder="50000"
+							value={odometer}
+							onChange={(e) => setOdometer(e.target.value)}
 							className={INPUT}
 							disabled={isLoading}
 						/>
@@ -192,7 +206,7 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 				</div>
 			</div>
 		),
-		[name, type, licensePlate, year, make, model, color, status, notes, isLoading]
+		[name, type, licensePlate, year, make, model, color, status, notes, odometer, isLoading]
 	);
 
 	return (

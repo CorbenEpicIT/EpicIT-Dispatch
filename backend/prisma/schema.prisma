@@ -998,6 +998,7 @@ model job_visit {
   actual_end_at        DateTime?
 
   estimated_drive_miles Float?
+  estimated_return_drive_miles Float?
 
   status              visit_status @default(Scheduled)
   cancellation_reason String?

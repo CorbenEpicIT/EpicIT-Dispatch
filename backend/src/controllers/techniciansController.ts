@@ -16,6 +16,8 @@ import { randomBytes } from "crypto";
 import { sendEmailVerificationEmail } from "../services/emailService.js";
 import { getMfaEnabledUserIds, isMfaEnabled } from "../services/mfaService.js";
 import { db } from "../db.js";
+import { utcDayRange } from "../lib/dayRange.js";
+import { fetchRouteDistanceMiles, applyOdometerIncrement } from "../lib/vehicleMileage.js";
 
 const PAID_BREAK_REASONS = new Set<string>(["Rest", "EquipmentIssue"]);
 const VALID_BREAK_REASONS = new Set<string>([
@@ -495,7 +497,7 @@ export const startShift = async (techId: string, organizationId: string) => {
 	}
 };
 
-export const goOffline = async (techId: string, organizationId: string) => {
+export const goOffline = async (techId: string, organizationId: string, techCords?: { lat: number; lon: number }) => {
 	try {
 		const sdb = getScopedDb(organizationId);
 		const tech = await sdb.technician.findUnique({ where: { id: techId } });
@@ -506,6 +508,42 @@ export const goOffline = async (techId: string, organizationId: string) => {
 		});
 		if (openEntry)
 			return { err: "Cannot end shift while clocked into a visit" };
+
+		// calculating the return milage of last job
+		if (techCords) {
+			const org = await sdb.organization.findFirst({ where: { id: organizationId }, select: { timezone: true } });
+			const orgTz = org?.timezone ?? "UTC";
+
+			const { start: startOfToday, end: endOfToday } = utcDayRange(new Date(), 1, orgTz);
+			
+			const lastVisit = await sdb.job_visit.findFirst({
+				where: {
+					status: "Completed",
+					actual_end_at: { not: null },
+					scheduled_start_at: { gte: startOfToday, lt: endOfToday },
+					estimated_return_drive_miles: null,
+					visit_techs: { some: { tech_id: techId } },
+				},
+				include: { job: true },
+				orderBy: { actual_end_at: "desc" },
+			});
+
+			if (lastVisit){
+				const jobCoords = lastVisit.job.coords as { lat?: number; lon?: number; lng?: number } | null;
+				const jobLon = jobCoords?.lon ?? jobCoords?.lng;
+				const miles = await fetchRouteDistanceMiles(
+					jobCoords?.lat && jobLon ? { lat: jobCoords.lat, lon: jobLon } : null,
+					techCords,
+				);
+				if (miles !== null) {
+					await sdb.job_visit.update({
+						where: { id: lastVisit.id },
+						data: { estimated_return_drive_miles: miles },
+					});
+					applyOdometerIncrement(sdb, techId, miles);
+				}
+			}
+		}
 
 		// Cancel any pending WrappingUp auto-transition before status changes
 		import("../services/wrappingUpTimer.js")

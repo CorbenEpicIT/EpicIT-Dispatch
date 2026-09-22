@@ -11,6 +11,7 @@ export const CreateVehicleSchema = z.object({
 	color: z.string().max(50).nullable().optional(),
 	status: z.enum(["active", "inactive"]).optional(),
 	notes: z.string().max(1000).nullable().optional(),
+	current_odometer_mi: z.number().int().min(0).nullable().optional(),
 });
 
 export interface Vehicle {
@@ -25,6 +26,8 @@ export interface Vehicle {
 	status: "active" | "inactive";
 	color: string | null;
 	notes: string | null;
+	current_odometer_mi: number | null;
+	odometer_updated_at: string | null;
 	created_at: string;
 	updated_at: string;
 	stock_items?: VehicleStockItem[];
@@ -63,6 +66,7 @@ export interface CreateVehicleInput {
 	color?: string | null;
 	status?: "active" | "inactive";
 	notes?: string | null;
+	current_odometer_mi?: number | null;
 }
 
 export type UpdateVehicleInput = Partial<CreateVehicleInput>;

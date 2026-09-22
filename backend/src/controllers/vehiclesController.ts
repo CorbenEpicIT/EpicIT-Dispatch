@@ -366,6 +366,7 @@ const createVehicleSchema = z.object({
 	color:         z.string().max(50).nullable().optional(),
 	status:        z.enum(["active", "inactive"]).default("active"),
 	notes:         z.string().max(1000).nullable().optional(),
+	current_odometer_mi: z.number().int().min(0).nullable().optional(),
 });
 
 const updateVehicleSchema = createVehicleSchema.partial();
@@ -521,6 +522,7 @@ export const createVehicle = async (data: unknown, organizationId: string, conte
 			data: {
 				...parsed,
 				organization_id: organizationId,
+				...(parsed.current_odometer_mi != null ? { odometer_updated_at: new Date() } : {}),
 			},
 		});
 		await logActivity({
@@ -551,7 +553,10 @@ export const updateVehicle = async (id: string, data: unknown, organizationId: s
 		const sdb = getScopedDb(organizationId);
 		const vehicle = await sdb.vehicle.update({
 			where: { id },
-			data: parsed,
+			data: {
+				...parsed,
+				...(parsed.current_odometer_mi != null ? { odometer_updated_at: new Date() } : {})
+			}
 		});
 		await logActivity({
 			event_type: "vehicle.updated",
@@ -3217,6 +3222,13 @@ export const createMaintenanceRecord = async (orgId: string, vehicleId: string, 
 		}
 	});
 
+	if (record.odometer_mi != null) {
+		await sdb.vehicle.update({
+			where: { id: vehicleId },
+			data: { current_odometer_mi: record.odometer_mi, odometer_updated_at: record.performed_at },
+		});
+	}
+
 	await logActivity({
 		event_type: "vehicle_maintenance.created",
 		action: "created",
@@ -3287,6 +3299,13 @@ export const updateMaintenanceRecord = async(orgId: string, vehicleId: string, r
 			...(parsed.performed_at ? { performed_at: new Date(parsed.performed_at) } : {}),
 		},
 	});
+
+	if (record.odometer_mi != null) {
+		await sdb.vehicle.update({
+			where: { id: vehicleId },
+			data: { current_odometer_mi: record.odometer_mi, odometer_updated_at: record.performed_at },
+		});
+	}
 
 	const changes = buildChanges(existing, parsed, [
 		"category", "performed_at", "odometer_mi", "interval_miles",

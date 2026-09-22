@@ -78,8 +78,10 @@ export const goAvailable = async (technicianId: string): Promise<Technician> => 
 	return response.data.data!;
 };
 
-export const goOffline = async (technicianId: string): Promise<Technician> => {
-	const response = await api.post<ApiResponse<Technician>>(`/technicians/${technicianId}/offline`);
+export const goOffline = async (technicianId: string, techCoords?: { lat: number; lon: number }): Promise<Technician> => {
+	const response = await api.post<ApiResponse<Technician>>(`/technicians/${technicianId}/offline`, {
+		...(techCoords ? { tech_coords: techCoords } : {}),
+	});
 	if (!response.data.success) {
 		throw new Error(response.data.error?.message || 'Failed to go offline');
 	}

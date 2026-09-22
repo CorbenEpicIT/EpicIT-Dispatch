@@ -792,7 +792,7 @@ export const getMileageReport = async (
 
 	const visits = await sdb.job_visit.findMany({
 		where: {
-			estimated_drive_miles: { not: null },
+			OR: [{ estimated_drive_miles: { not: null } }, { estimated_return_drive_miles: { not: null } }],
 			job: { organization_id: organizationId },
 			...(Object.keys(dateFilter).length && { scheduled_start_at: dateFilter }),
 		},
@@ -819,7 +819,7 @@ export const getMileageReport = async (
 		jobAddress: v.job.address,
 		clientName: v.job.client?.name ?? "Unknown Client",
 		visitDate: v.scheduled_start_at.toISOString(),
-		miles: Number(v.estimated_drive_miles ?? 0),
+		miles: Number(v.estimated_drive_miles ?? 0) + Number(v.estimated_return_drive_miles ?? 0),
 		visitStatus: v.status,
 		technicianNames: v.visit_techs.map((vt) => vt.tech.name).join(", ") || "Unassigned",
 	}));

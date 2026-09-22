@@ -3537,6 +3537,8 @@ async function main() {
 			status: "active",
 			color: "Pearl White",
 			notes: "Primary service van. Roof rack with ladder. Currently crewed by John Smith; Kevin Park rode along this week after his usual van went in for service.",
+			current_odometer_mi: 41500,
+			odometer_updated_at: daysFromNow(-6),
 		},
 	});
 
@@ -3552,6 +3554,8 @@ async function main() {
 			status: "active",
 			color: "Fleet Blue",
 			notes: "Currently crewed by Maria Rodriguez. Check tire pressure weekly.",
+			current_odometer_mi: 28750,
+			odometer_updated_at: daysFromNow(-9),
 		},
 	});
 
@@ -3567,6 +3571,8 @@ async function main() {
 			status: "active",
 			color: "Silver",
 			notes: "Spare vehicle — unassigned. Fully stocked for overflow and swaps.",
+			current_odometer_mi: 52100,
+			odometer_updated_at: daysFromNow(-2),
 		},
 	});
 

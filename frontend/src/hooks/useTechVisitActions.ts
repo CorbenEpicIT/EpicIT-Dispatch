@@ -10,6 +10,7 @@ import type { JobVisit, VisitTechTimeEntry, VisitStatus } from "../types/jobs";
 import { getActionConstraints, type VisitActionConstraints } from "../lib/visitActionConstraints";
 import { useTechnicianStatus } from "./useTechnicianStatus";
 import type { TechnicianStatus } from "../types/technicians";
+import { getDeviceCoords } from "../lib/geolocation";
 
 export type TechVisitUiState =
 	| "idle"
@@ -52,21 +53,6 @@ export interface UseTechVisitActionsReturn {
 }
 
 const CONFIRM_TIMEOUT_MS = 4000;
-
-// Gets the user's current location and returns null if it cannot be retrieved from the user
-function getDeviceCoords(): Promise<{ lat: number; lon: number } | null> {
-	return new Promise((resolve) => {
-		if (typeof navigator === "undefined" || !navigator.geolocation) {
-			resolve(null);
-			return;
-		}
-		navigator.geolocation.getCurrentPosition(
-			(pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-			() => resolve(null),
-			{ timeout: 5_000, maximumAge: 60_000 },
-		);
-	});
-}
 
 export function useTechVisitActions(
 	visit: JobVisit | undefined,

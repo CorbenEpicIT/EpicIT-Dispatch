@@ -335,7 +335,14 @@ router.post("/:id/offline", async (req, res, next) => {
 	try {
 		const id = req.params.id as string;
 		const orgId = req.user!.organization_id as string;
-		const result = await goOffline(id, orgId);
+		const { tech_coords } = req.body;
+		const rawLat = Number(tech_coords?.lat);
+		const rawLon = Number(tech_coords?.lon);
+		const techCoords =
+			Number.isFinite(rawLat) && Number.isFinite(rawLon)
+				? { lat: rawLat, lon: rawLon }
+				: undefined;
+		const result = await goOffline(id, orgId, techCoords);
 		if (result.err) {
 			const status = result.err.includes("clocked into") ? 409 : 400;
 			return res.status(status).json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, result.err));

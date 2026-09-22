@@ -28,6 +28,7 @@ export default function CreateVehicle({
 	const [color, setColor] = useState("");
 	const [status, setStatus] = useState<"active" | "inactive">("active");
 	const [notes, setNotes] = useState("");
+	const [odometer, setOdometer] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 	const [errors, setErrors] = useState<ZodError | null>(null);
 
@@ -41,6 +42,7 @@ export default function CreateVehicle({
 		setColor("");
 		setStatus("active");
 		setNotes("");
+		setOdometer("");
 		setErrors(null);
 	}, []);
 
@@ -78,6 +80,7 @@ export default function CreateVehicle({
 			color: color.trim() || null,
 			status,
 			notes: notes.trim() || null,
+			current_odometer_mi: odometer ? parseInt(odometer, 10) : null,
 		};
 		const result = CreateVehicleSchema.safeParse(input);
 		if (!result.success) {
@@ -161,7 +164,7 @@ export default function CreateVehicle({
 				</div>
 
 				{/* Year + Make + Model */}
-				<div className="grid grid-cols-3 gap-2">
+				<div className="grid grid-cols-4 gap-2">
 					<div>
 						<label className={LABEL}>Year</label>
 						<input
@@ -191,6 +194,17 @@ export default function CreateVehicle({
 							placeholder="Transit"
 							value={model}
 							onChange={(e) => setModel(e.target.value)}
+							className={INPUT}
+							disabled={isLoading}
+						/>
+					</div>
+					<div>
+						<label className={LABEL}>Miles</label>
+						<input
+							type="number"
+							placeholder="50000"
+							value={odometer}
+							onChange={(e) => setOdometer(e.target.value)}
 							className={INPUT}
 							disabled={isLoading}
 						/>
