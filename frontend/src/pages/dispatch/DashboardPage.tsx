@@ -31,6 +31,7 @@ import type { TechnicianStatus } from "../../types/technicians";
 import CreateRecurringPlan from "../../components/recurringPlans/CreateRecurringPlan";
 import LowStockWidget from "../../components/widgets/LowStockWidget";
 import OpenDisputesWidget from "../../components/widgets/OpenDisputesWidget";
+import MaintenanceRemindersWidget from "../../components/widgets/MaintenanceRemindersWidget";
 import { canSeeWidget } from "../../lib/permissionGates";
 import ActivityFeed from "../../components/dashboard/ActivityFeed";
 import { useDispatcherByIdQuery, useUpdateDispatcherMutation } from "../../hooks/useDispatchers";
@@ -530,6 +531,7 @@ export default function DashboardPage() {
 						</Card>;
 			case "low-stock": 			   return <LowStockWidget className="h-full" />;
 			case "open-disputes":          return <OpenDisputesWidget />;
+			case "maintenance-reminders":  return <MaintenanceRemindersWidget />;
 			case "map":  				   return <MapWidget />;
 			case "quickbooks": 			   return QUICKBOOKS_ENABLED ? <QBWidget /> : null;
 			case "report-overview":        return <OverviewWidget />;

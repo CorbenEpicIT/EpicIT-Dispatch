@@ -4,12 +4,13 @@ import type { ResponsiveConstraints, WidgetCatalog } from "./gridLayoutEngine";
 import { DISPUTE_VIEW_PERMISSIONS } from "./permissionGates";
 
 export const DEFAULT_LAYOUT: Layout = [
-    { i: "week-strip",    x: 0, y: 0,  w: 12, h: 5  },
+    { i: "week-strip",    x: 0, y: 0,  w: 8,  h: 5  },
+    { i: "technicians",   x: 8, y: 0,  w: 4,  h: 3  },
+    { i: "open-disputes", x: 8, y: 3,  w: 4,  h: 4  },
     { i: "pipeline",      x: 0, y: 5,  w: 3,  h: 6  },
+    { i: "activity-feed", x: 3, y: 5,  w: 5,  h: 8  },
+    { i: "maintenance-reminders", x: 8, y: 7, w: 4, h: 6 },
     { i: "low-stock",     x: 0, y: 11, w: 3,  h: 2  },
-    { i: "activity-feed", x: 3, y: 5,  w: 5,  h: 12 },
-    { i: "technicians",   x: 8, y: 5,  w: 4,  h: 3  },
-    { i: "open-disputes", x: 8, y: 8,  w: 4,  h: 6  },
 ];
 
 
@@ -19,8 +20,9 @@ const DEFAULT_MD_LAYOUT: Layout = [
     { i: "pipeline",      x: 0, y: 5,  w: 4, h: 6  },
     { i: "technicians",   x: 4, y: 5,  w: 4, h: 3  },
     { i: "open-disputes", x: 4, y: 8,  w: 4, h: 6  },
-    { i: "low-stock",     x: 0, y: 11, w: 4, h: 2  },
-    { i: "activity-feed", x: 0, y: 14, w: 8, h: 12 },
+    { i: "maintenance-reminders", x: 0, y: 11, w: 4, h: 6 },
+    { i: "low-stock",     x: 4, y: 14, w: 4, h: 2  },
+    { i: "activity-feed", x: 0, y: 17, w: 8, h: 12 },
 ];
 
 // 4-col single-column stacked layout
@@ -28,9 +30,10 @@ const DEFAULT_SM_LAYOUT: Layout = [
     { i: "week-strip",    x: 0, y: 0,  w: 4, h: 4  },
     { i: "pipeline",      x: 0, y: 4,  w: 4, h: 6  },
     { i: "open-disputes", x: 0, y: 10, w: 4, h: 6  },
-    { i: "activity-feed", x: 0, y: 16, w: 4, h: 12 },
-    { i: "technicians",   x: 0, y: 28, w: 4, h: 3  },
-    { i: "low-stock",     x: 0, y: 31, w: 4, h: 2  },
+    { i: "maintenance-reminders", x: 0, y: 16, w: 4, h: 6 },
+    { i: "activity-feed", x: 0, y: 22, w: 4, h: 12 },
+    { i: "technicians",   x: 0, y: 34, w: 4, h: 3  },
+    { i: "low-stock",     x: 0, y: 37, w: 4, h: 2  },
 ];
 
 export const DEFAULT_RESPONSIVE_LAYOUTS: ResponsiveLayouts = {
@@ -94,6 +97,13 @@ export const WIDGET_CATALOG: WidgetCatalog & Record<string, {
     "open-disputes":        {   label: "Open Disputes",
                                 defaultW: 4,  defaultH: 6,  minW: 3, minH: 4, maxH: 10, maxW: 6,
                                 requiredAnyPermission: DISPUTE_VIEW_PERMISSIONS,
+                                responsiveConstraints: [
+                                    { atWidth: 800, minW: 4, maxW: 12 },
+                                ]
+                            },
+    "maintenance-reminders":{   label: "Maintenance Reminders",
+                                defaultW: 4,  defaultH: 6,  minW: 3, minH: 4, maxH: 10, maxW: 6,
+                                requiredAnyPermission: ["view_vehicles", "manage_vehicles"],
                                 responsiveConstraints: [
                                     { atWidth: 800, minW: 4, maxW: 12 },
                                 ]

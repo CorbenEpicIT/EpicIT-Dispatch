@@ -137,7 +137,7 @@ export default function VehicleAlertsSidebar() {
 	);
 }
 
-function EmptyState({ label, hint }: { label: string; hint: string }) {
+export function EmptyState({ label, hint }: { label: string; hint: string }) {
 	return (
 		<div className="flex flex-col items-center justify-center h-full text-center px-4">
 			<div className="w-10 h-10 rounded-full bg-success/10 flex items-center justify-center mb-3">
@@ -216,7 +216,7 @@ function ConflictCard({
 	);
 }
 
-function AlertCard({ alert, onClick }: { alert: VehicleMaintenanceAlert; onClick: () => void }) {
+export function AlertCard({ alert, onClick }: { alert: VehicleMaintenanceAlert; onClick: () => void }) {
 	const isOverdue = alert.status === "overdue";
 	const dueLines = alertDueLines(alert);
 

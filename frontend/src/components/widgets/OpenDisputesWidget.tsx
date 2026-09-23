@@ -12,7 +12,7 @@ export default function OpenDisputesWidget() {
 	return (
 		<Card
 			title="Open Disputes"
-			className="h-full"
+			className="h-full pb-3"
 			headerAction={data && data.total > 0 ? <KindLinks counts={data.counts} /> : undefined}
 		>
 			{isLoading ? (
