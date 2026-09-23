@@ -878,6 +878,11 @@ export async function receivePurchase(
 		}
 
 		const incrementById = new Map(parsed.lines.map((l) => [l.id, l.quantity_received]));
+		const vehicleOverrideById = new Map(
+			parsed.lines
+				.filter((l) => l.disposition_vehicle_id !== undefined)
+				.map((l) => [l.id, l.disposition_vehicle_id ?? null]),
+		);
 
 		const notReceivable = purchase.lines
 			.filter((l) => incrementById.has(l.id) && l.disposition !== "receive" && l.disposition !== "non_stock")
@@ -887,6 +892,15 @@ export async function receivePurchase(
 				err: `Validation failed: line(s) with no receivable disposition: ${notReceivable.join(", ")}`,
 			};
 		}
+
+		const linesById = new Map(purchase.lines.map((l) => [l.id, l]));
+		const badOverride = [...vehicleOverrideById.keys()].filter(
+			(id) => linesById.get(id)!.disposition !== "receive",
+		);
+		if (badOverride.length > 0) {
+			return { err: "Validation failed: only a `receive` line takes a destination vehicle" };
+		}
+		await assertDispositionVehiclesInOrg(db, orgId, [...vehicleOverrideById.values()]);
 
 		const dispatcherId = context?.dispatcherId ?? "";
 		const touchedIds = [...incrementById.keys()].sort();
@@ -919,6 +933,7 @@ export async function receivePurchase(
 			// re-move/re-bill what a prior call already settled.
 			const receivingLines: ApprovalLine[] = touchedIds.map((id) => {
 				const l = lockedById.get(id)!;
+				const vehicleId = vehicleOverrideById.has(id) ? vehicleOverrideById.get(id)! : l.disposition_vehicle_id;
 				return {
 					id: l.id,
 					description: l.description,
@@ -926,7 +941,7 @@ export async function receivePurchase(
 					unit_price: l.unit_price,
 					inventory_item_id: l.inventory_item_id,
 					disposition: l.disposition,
-					disposition_vehicle_id: l.disposition_vehicle_id,
+					disposition_vehicle_id: vehicleId,
 					visit_line_item_id: l.visit_line_item_id,
 					allocation: l.allocation_id
 						? { job_visit_id: purchase.allocations.find((a) => a.id === l.allocation_id)?.job_visit_id ?? null }
@@ -952,11 +967,18 @@ export async function receivePurchase(
 				const line = lockedById.get(id)!;
 				const increment = incrementById.get(id)!;
 				const newTotal = Number(line.quantity_recieved) + increment;
+				const vehicleId = vehicleOverrideById.get(id);
 				await tx.purchase_line.update({
 					where: { id },
 					data: {
 						quantity_recieved: { increment },
 						received_at: newTotal >= Number(line.quantity) ? new Date() : line.received_at,
+						...(vehicleOverrideById.has(id)
+							? {
+									disposition_vehicle_id: vehicleId,
+									disposition_location: vehicleId ? "vehicle" : "warehouse",
+								}
+							: {}),
 					},
 				});
 			}

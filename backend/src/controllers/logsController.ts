@@ -140,6 +140,20 @@ const ENTITY_GROUPS: Record<entity, GroupMember[]> = {
                     .findMany({ where: { job_id: jobId }, select: { id: true } })
                     .then(pluck),
         },
+        {
+            entity_type: "quote",
+            resolve: (sdb, jobId) =>
+                sdb.job
+                    .findUnique({ where: { id: jobId }, select: { quote_id: true } })
+                    .then((j) => (j?.quote_id ? [j.quote_id] : [])),
+        },
+        {
+            entity_type: "request",
+            resolve: (sdb, jobId) =>
+                sdb.job
+                    .findUnique({ where: { id: jobId }, select: { request_id: true } })
+                    .then((j) => (j?.request_id ? [j.request_id] : [])),
+        },
     ],
     quote: [
         { entity_type: "quote" },

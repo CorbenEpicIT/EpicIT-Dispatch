@@ -118,6 +118,7 @@ export const receivePurchaseSchema = z.object({
 			z.object({
 				id: z.string().uuid(),
 				quantity_received: positiveMoney("Quantity received"),
+				disposition_vehicle_id: z.string().uuid().nullable().optional(),
 			}),
 		)
 		.min(1, "At least one line must be received"),

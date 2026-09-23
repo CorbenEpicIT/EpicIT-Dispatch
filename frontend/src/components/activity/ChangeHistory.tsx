@@ -5,7 +5,7 @@ import { Fragment, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../auth/authStore";
 import { FALLBACK_TIMEZONE } from "../../util/util";
-import { ACTION_FILTERS, actionFilterKeyFor, formatChange, type RefType } from "./changeFormat";
+import { ACTION_FILTERS, actionFilterKeyFor, entityLabelFor, formatChange, type RefType } from "./changeFormat";
 import Card from "../ui/Card";
 import type { ChangeScope } from "../../types/logs";
 import { useClientByIdQuery } from "../../hooks/useClients";
@@ -182,6 +182,9 @@ export default function ChangeHistory({ scope, title, pageSize = CHANGE_HISTORY_
                                             <entry.icon size={13} className={entry.color} />
                                         </div>
                                         <div className="min-w-0 flex-1">
+                                            <p className="text-[10px] font-semibold uppercase tracking-wide text-text-faint">
+                                                {entityLabelFor(log.entity_type)}
+                                            </p>
                                             <p className="text-sm text-text-primary leading-snug">{entry.headline} by {log.actor_name ?? "-"}</p>
                                             {entry.subtitle && (
                                                 <p className="text-xs text-text-muted mt-0.5 truncate">{entry.subtitle}</p>

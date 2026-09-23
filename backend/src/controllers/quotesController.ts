@@ -199,6 +199,25 @@ export const insertQuote = async (req: Request, organizationId: string, context?
 					where: { id: parsed.request_id },
 					data: { status: "Quoted" },
 				});
+
+				await logActivity({
+					event_type: "request.quoted",
+					action: "converted",
+					entity_type: "request",
+					entity_id: parsed.request_id,
+					organization_id: organizationId,
+					actor_type: context?.techId
+						? "technician"
+						: context?.dispatcherId
+							? "dispatcher"
+							: "system",
+					actor_id: context?.techId || context?.dispatcherId,
+					changes: {
+						status: { old: request.status, new: "Quoted" },
+					},
+					ip_address: context?.ipAddress,
+					user_agent: context?.userAgent,
+				});
 			}
 
 			if (!address) {
@@ -713,16 +732,35 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 
 			// Sync request status if linked
 			if (quote.request_id && parsed.status) {
+				const requestStatusSync = async (newStatus: "QuoteApproved" | "QuoteRejected") => {
+					await tx.request.update({
+						where: { id: quote.request_id! },
+						data: { status: newStatus },
+					});
+					await logActivity({
+						event_type: newStatus === "QuoteApproved" ? "request.quote_approved" : "request.quote_rejected",
+						action: "updated",
+						entity_type: "request",
+						entity_id: quote.request_id!,
+						organization_id: organizationId,
+						actor_type: context?.techId
+							? "technician"
+							: context?.dispatcherId
+								? "dispatcher"
+								: "system",
+						actor_id: context?.techId || context?.dispatcherId,
+						changes: {
+							status: { old: quote.request?.status ?? null, new: newStatus },
+						},
+						ip_address: context?.ipAddress,
+						user_agent: context?.userAgent,
+					});
+				};
+
 				if (parsed.status === "Approved") {
-					await tx.request.update({
-						where: { id: quote.request_id },
-						data: { status: "QuoteApproved" },
-					});
+					await requestStatusSync("QuoteApproved");
 				} else if (parsed.status === "Rejected") {
-					await tx.request.update({
-						where: { id: quote.request_id },
-						data: { status: "QuoteRejected" },
-					});
+					await requestStatusSync("QuoteRejected");
 				}
 			}
 

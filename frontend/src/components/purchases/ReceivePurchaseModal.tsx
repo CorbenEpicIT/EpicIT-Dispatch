@@ -3,6 +3,7 @@ import { X, ScanLine, Loader2, Package, Wrench } from "lucide-react";
 import FullPopup from "../ui/FullPopup";
 import { BarcodeScanner } from "../inventory/BarcodeScanner";
 import { useReceivePurchaseMutation } from "../../hooks/usePurchases";
+import { useVehiclesQuery } from "../../hooks/useVehicles";
 import { useToast } from "../ui/useToast";
 import { unitLabel } from "../../lib/units";
 import { formatDateTime } from "../../util/util";
@@ -25,10 +26,15 @@ const remainderOf = (l: PurchaseLine) => Math.max(0, Number(l.quantity) - Number
 export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: ReceivePurchaseModalProps) {
 	const toast = useToast();
 	const { mutateAsync: receive, isPending } = useReceivePurchaseMutation();
+	const { data: vehiclesData } = useVehiclesQuery();
+	const vehicles = useMemo(() => vehiclesData ?? [], [vehiclesData]);
 	const lines = useMemo(() => purchase.lines.filter(isReceivable), [purchase.lines]);
 
 	const [drafts, setDrafts] = useState<Record<string, string>>(() =>
 		Object.fromEntries(lines.map((l) => [l.id, remainderOf(l) > 0 ? String(remainderOf(l)) : ""])),
+	);
+	const [vehicleOverrides, setVehicleOverrides] = useState<Record<string, string>>(() =>
+		Object.fromEntries(lines.map((l) => [l.id, l.disposition_vehicle_id ?? ""])),
 	);
 	const [isScannerOpen, setIsScannerOpen] = useState(false);
 
@@ -70,7 +76,15 @@ export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: Rece
 		try {
 			const { warnings } = await receive({
 				id: purchase.id,
-				data: { lines: touched.map((t) => ({ id: t.line.id, quantity_received: t.qty })) },
+				data: {
+					lines: touched.map((t) => ({
+						id: t.line.id,
+						quantity_received: t.qty,
+						...(t.line.disposition === "receive"
+							? { disposition_vehicle_id: vehicleOverrides[t.line.id] || null }
+							: {}),
+					})),
+				},
 			});
 			toast.success("Purchase order updated");
 			warnings.forEach((w) => toast.warning(w));
@@ -133,9 +147,24 @@ export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: Rece
 									<p className="text-sm font-semibold text-text-primary truncate">{l.description}</p>
 									<div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-text-muted">
 										{l.disposition === "receive" ? (
-											<span className="inline-flex items-center gap-1 rounded border border-primary-border bg-primary-bg px-1.5 py-0.5 text-[11px] font-semibold text-primary-text">
+											<span className="inline-flex items-center gap-1 rounded border border-primary-border bg-primary-bg px-1 py-0.5 text-[11px] font-semibold text-primary-text">
 												<Package size={10} />
-												Receive → {l.disposition_vehicle?.name ?? "Warehouse"}
+												Receive →
+												<select
+													value={vehicleOverrides[l.id] ?? ""}
+													onChange={(e) =>
+														setVehicleOverrides((prev) => ({ ...prev, [l.id]: e.target.value }))
+													}
+													aria-label={`Receive "${l.description}" into`}
+													className="bg-transparent text-[11px] font-semibold text-primary-text focus:outline-none [&>option]:bg-base [&>option]:text-text-primary"
+												>
+													<option value="">Warehouse</option>
+													{vehicles.map((v) => (
+														<option key={v.id} value={v.id}>
+															{v.name}
+														</option>
+													))}
+												</select>
 											</span>
 										) : (
 											<span className="inline-flex items-center gap-1 rounded border border-reviewing/30 bg-reviewing/10 px-1.5 py-0.5 text-[11px] font-semibold text-reviewing-text">

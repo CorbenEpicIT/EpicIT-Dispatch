@@ -1,4 +1,4 @@
-import { History, Link2, Pencil, Plus, Send, ShieldCheck, Trash2, Unlink, UserCheck, UserX } from "lucide-react";
+import { History, Link2, Pencil, Plus, Repeat, Send, ShieldCheck, Trash2, Unlink, UserCheck, UserX } from "lucide-react";
 import type React from "react";
 import type { ActivityLog } from "../../types/logs";
 
@@ -35,6 +35,7 @@ const ACTION_VERBS: Record<string, string> = {
 	authorized: "authorized",
 	assigned: "assigned",
 	removed: "removed",
+	converted: "converted",
 };
 
 type EntryStyle = { icon: React.ElementType; color: string; bg: string };
@@ -58,6 +59,7 @@ const VERB_STYLES: Record<string, EntryStyle> = {
 	authorized: { icon: ShieldCheck, color: "text-success-text", bg: "bg-success/10" },
 	assigned: { icon: UserCheck, color: "text-success-text", bg: "bg-success/10" },
 	removed: { icon: UserX, color: "text-error-text", bg: "bg-error/10" },
+	converted: { icon: Repeat, color: "text-primary-text", bg: "bg-primary/10" },
 };
 
 export const OTHER_FILTER_KEY = "other";
@@ -72,6 +74,7 @@ export const ACTION_FILTERS = [
 	{ key: "detached", label: "Detached", verbs: ["detached"], ...VERB_STYLES.detached },
 	{ key: "sent", label: "Sent", verbs: ["sent"], ...VERB_STYLES.sent },
 	{ key: "authorized", label: "Authorized", verbs: ["authorized"], ...VERB_STYLES.authorized },
+	{ key: "converted", label: "Converted", verbs: ["converted"], ...VERB_STYLES.converted },
 	// Catch-all for verbs no chip above lists (failed, push_failed, reuse_detected, …)
 	{ key: OTHER_FILTER_KEY, label: "Other", verbs: [], ...DEFAULT_STYLE },
 ] as const;
@@ -118,6 +121,11 @@ const ENTITY_LABELS: Record<string, string> = {
 const HEADLINE_OVERRIDES: Record<string, string> = {
 	"project.job_attached": "Job attached",
 	"project.job_detached": "Job detached",
+	"quote.converted": "Quote converted to job",
+	"request.converted": "Request converted to job",
+	"request.quoted": "Request converted to quote",
+	"request.quote_approved": "Linked quote approved",
+	"request.quote_rejected": "Linked quote rejected",
 };
 
 const humanize = (raw: string): string => {
@@ -279,9 +287,11 @@ export const formatValue = (key: string, value: unknown, tz: string): string => 
 	return String(value);
 };
 
+export const entityLabelFor = (entityType: string): string => ENTITY_LABELS[entityType] ?? humanize(entityType);
+
 export const formatChange = (log: ActivityLog, tz: string): ChangeEntry => {
 	const verb = getVerb(log);
-	const entity = ENTITY_LABELS[log.entity_type] ?? humanize(log.entity_type);
+	const entity = entityLabelFor(log.entity_type);
 
 	const rows: ChangeRow[] = log.changes
 		? Object.entries(log.changes).flatMap(([key, delta]) => {

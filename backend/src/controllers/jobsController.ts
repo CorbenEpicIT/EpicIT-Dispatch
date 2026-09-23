@@ -413,10 +413,48 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 					data: { status: "Approved" },
 				});
 
+				await logActivity({
+					event_type: "quote.converted",
+					action: "converted",
+					entity_type: "quote",
+					entity_id: quote.id,
+					organization_id: organizationId,
+					actor_type: context?.techId
+						? "technician"
+						: context?.dispatcherId
+							? "dispatcher"
+							: "system",
+					actor_id: context?.techId || context?.dispatcherId,
+					changes: {
+						status: { old: quote.status, new: "Approved" },
+					},
+					ip_address: context?.ipAddress,
+					user_agent: context?.userAgent,
+				});
+
 				if (quote.request_id) {
 					await tx.request.update({
 						where: { id: quote.request_id },
 						data: { status: "ConvertedToJob" },
+					});
+
+					await logActivity({
+						event_type: "request.converted",
+						action: "converted",
+						entity_type: "request",
+						entity_id: quote.request_id,
+						organization_id: organizationId,
+						actor_type: context?.techId
+							? "technician"
+							: context?.dispatcherId
+								? "dispatcher"
+								: "system",
+						actor_id: context?.techId || context?.dispatcherId,
+						changes: {
+							status: { old: quote.request?.status ?? null, new: "ConvertedToJob" },
+						},
+						ip_address: context?.ipAddress,
+						user_agent: context?.userAgent,
 					});
 				}
 			}
@@ -444,6 +482,25 @@ export const insertJob = async (req: Request, context?: UserContext) => {
 				await tx.request.update({
 					where: { id: parsed.request_id },
 					data: { status: "ConvertedToJob" },
+				});
+
+				await logActivity({
+					event_type: "request.converted",
+					action: "converted",
+					entity_type: "request",
+					entity_id: parsed.request_id,
+					organization_id: organizationId,
+					actor_type: context?.techId
+						? "technician"
+						: context?.dispatcherId
+							? "dispatcher"
+							: "system",
+					actor_id: context?.techId || context?.dispatcherId,
+					changes: {
+						status: { old: request.status, new: "ConvertedToJob" },
+					},
+					ip_address: context?.ipAddress,
+					user_agent: context?.userAgent,
 				});
 			}
 
