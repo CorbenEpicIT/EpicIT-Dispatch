@@ -22,8 +22,9 @@ import type { VehicleStockItem, RestockRequest } from "../../types/vehicles";
 import StockHistorySection from "../../components/vehicles/StockHistorySection";
 import { unitLabel } from "../../lib/units";
 import MaintenanceTab from "../../components/vehicles/maintenance/MaintenanceTab";
+import ChangeHistory from "../../components/activity/ChangeHistory";
 
-type Tab = "stock" | "restock" | "alerts" | "maintenance";
+type Tab = "stock" | "restock" | "alerts" | "maintenance" | "activity";
 
 const STOCK_GRID = "grid-cols-[1fr_84px_84px_84px_84px_116px_36px]";
 
@@ -669,7 +670,7 @@ export default function VehicleStockPage() {
 	const [searchParams] = useSearchParams();
 	const initialTab = searchParams.get("tab");
 	const [activeTab, setActiveTab] = useState<Tab>(
-		initialTab === "restock" || initialTab === "alerts" || initialTab === "maintenance" ? initialTab : "stock"
+		initialTab === "restock" || initialTab === "alerts" || initialTab === "maintenance" || initialTab === "activity" ? initialTab : "stock"
 	);
 	const [isEditOpen, setIsEditOpen] = useState(false);
 	const [fillOpen, setFillOpen] = useState(false);
@@ -751,7 +752,7 @@ export default function VehicleStockPage() {
 				</div>
 				{/* Tabs */}
 				<div className="flex gap-0 -mb-px">
-					{(["stock", "restock", "alerts", "maintenance"] as Tab[]).map((t) => (
+					{(["stock", "restock", "alerts", "maintenance", "activity"] as Tab[]).map((t) => (
 						<button
 							key={t}
 							onClick={() => setActiveTab(t)}
@@ -774,6 +775,7 @@ export default function VehicleStockPage() {
 								</>
 							)}
 							{t === "maintenance" && "Maintenance"}
+							{t === "activity" && "Activity"}
 						</button>
 					))}
 				</div>
@@ -785,6 +787,11 @@ export default function VehicleStockPage() {
 				{activeTab === "restock" && <RestockWorkflow vehicleId={vehicleId} stockItems={stockItems} />}
 				{activeTab === "alerts"  && <AlertsTab vehicleId={vehicleId} />}
 				{activeTab === "maintenance" && <MaintenanceTab vehicleId={vehicleId} />}
+				{activeTab === "activity" && (
+					<div className="p-4">
+						<ChangeHistory scope={{ kind: "entity", type: "vehicle", id: vehicleId }} />
+					</div>
+				)}
 			</div>
 
 			{vehicle && (

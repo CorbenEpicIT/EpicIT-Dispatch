@@ -15,6 +15,7 @@ export type entity =
     | "client"
     | "project"
     | "recurring_plan"
+    | "vehicle"
     | "technician"
     | "dispatcher";
 
@@ -250,6 +251,51 @@ const ENTITY_GROUPS: Record<entity, GroupMember[]> = {
                     .then(pluck),
         },
     ],
+    vehicle: [
+        { entity_type: "vehicle" },
+        {
+            entity_type: "vehicle_stock_item",
+            resolve: (sdb, vehicleId) =>
+                sdb.vehicle_stock_item
+                    .findMany({ where: { vehicle_id: vehicleId }, select: { id: true }})
+                    .then(pluck),
+        },
+        {
+            entity_type: "vehicle_stock_adjustment",
+            resolve: (sdb, vehicleId) =>
+                sdb.vehicle_stock_adjustment
+                    .findMany({ where: { vehicle_id: vehicleId }, select: { id: true }})
+                    .then(pluck),
+        },
+        {
+            entity_type: "vehicle_restock_request",
+            resolve: (sdb, vehicleId) =>
+                sdb.vehicle_restock_request
+                    .findMany({ where: { stock_item: { vehicle_id: vehicleId } }, select: { id: true }})
+                    .then(pluck),
+        },
+        {
+            entity_type: "vehicle_restock_record",
+            resolve: (sdb, vehicleId) =>
+                sdb.vehicle_restock_record
+                    .findMany({ where: { vehicle_id: vehicleId }, select: { id: true }})
+                    .then(pluck),
+        },
+        {
+            entity_type: "vehicle_maintenance_record",
+            resolve: (sdb, vehicleId) =>
+                sdb.vehicle_maintenance_record
+                    .findMany({ where: { vehicle_id: vehicleId }, select: { id: true }})
+                    .then(pluck),
+        },
+        {
+            entity_type: "vehicle_maintenance_reminder",
+            resolve: (sdb, vehicleId) =>
+                sdb.vehicle_maintenance_reminder
+                    .findMany({ where: { vehicle_id: vehicleId }, select: { id: true }})
+                    .then(pluck),
+        },
+    ],
     // Matches on entity_id = the target user's own id, so any update logged
     // against their record (name/status edits, role assignment, etc.) surfaces
     // here regardless of who the actor was.
@@ -316,12 +362,24 @@ const buildEntityOr = async (
 
     // Children that no longer exist (deleted rows) can't be resolved from
     // the child tables — match them through the parent breadcrumb instead.
-    for (const member of group) {
-        if (!member.resolve) continue;
-        scopedOr.push({
+    const breadcrumbOr: Prisma.logWhereInput[] = group
+        .filter((member) => member.resolve)
+        .map((member) => ({
             entity_type: member.entity_type,
             changes: { path: [...PARENT_ID_PATH], equals: id },
+        }));
+    scopedOr.push(...breadcrumbOr);
+
+    // Only the delete row carries the breadcrumb; pull in the deleted child's earlier rows by id.
+    if (breadcrumbOr.length > 0) {
+        const deletedChildren = await sdb.log.findMany({
+            where: { OR: breadcrumbOr },
+            select: { entity_type: true, entity_id: true },
+            distinct: ["entity_type", "entity_id"],
         });
+        for (const child of deletedChildren) {
+            scopedOr.push({ entity_type: child.entity_type, entity_id: child.entity_id });
+        }
     }
 
     return scopedOr;

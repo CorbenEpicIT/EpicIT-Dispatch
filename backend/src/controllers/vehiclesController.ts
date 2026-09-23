@@ -39,6 +39,7 @@ import {
 import { createMaintenanceRecordSchema, createMaintenanceReminderSchema, updateMaintenanceRecordSchema, updateMaintenanceReminderSchema } from "../lib/validate/vehicles.js";
 import { classifyReminder, resolveDueTargets } from "../lib/validate/vehicleMaintenanceStatus.js";
 import { applyRecordOdometer } from "../lib/vehicleMileage.js";
+import { parentBreadcrumb } from "./logsController.js";
 
 // Stock-item quantities nested under a restock request only carry a partial
 // inventory_item select (id/name/unit/quantity, no Decimal fields) — convert
@@ -552,6 +553,8 @@ export const updateVehicle = async (id: string, data: unknown, organizationId: s
 	try {
 		const parsed = updateVehicleSchema.parse(data);
 		const sdb = getScopedDb(organizationId);
+		const existing = await sdb.vehicle.findFirst({ where: { id } });
+		if (!existing) return { err: "Vehicle not found" };
 		const vehicle = await sdb.vehicle.update({
 			where: { id },
 			data: {
@@ -566,6 +569,10 @@ export const updateVehicle = async (id: string, data: unknown, organizationId: s
 			entity_id: vehicle.id,
 			organization_id: organizationId,
 			...getActorInfo(context),
+			changes: buildChanges(existing, parsed, [
+				"name", "type", "license_plate", "year", "make",
+				"model", "color", "status", "notes", "current_odometer_mi",
+			] as const),
 		});
 		return { err: "", item: vehicle };
 	} catch (e: unknown) {
@@ -763,6 +770,7 @@ export const deleteVehicleStockItem = async (vehicleId: string, itemId: string, 
 			entity_id: itemId,
 			organization_id: organizationId,
 			...getActorInfo(context),
+			changes: { ...parentBreadcrumb("vehicle", vehicleId) },
 		});
 		return { err: "" };
 	} catch (e: unknown) {
@@ -3368,6 +3376,7 @@ export const deleteMaintenanceRecord = async (orgId: string, recordId: string, v
 		changes: {
 			category:     { old: existing.category, new: null },
 			performed_at: { old: existing.performed_at, new: null },
+			...parentBreadcrumb("vehicle", vehicleId),
 		},
 	});
 
@@ -3573,6 +3582,7 @@ export const deleteMaintenanceReminder = async (orgId: string, vehicleId: string
 			category: { new: null, old: existing.category },
 			title:    { new: null, old: existing.title },
 			repeats:  { new: null, old: existing.repeats },
+			...parentBreadcrumb("vehicle", vehicleId),
 		},
 	});
 

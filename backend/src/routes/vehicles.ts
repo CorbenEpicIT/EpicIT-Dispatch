@@ -51,6 +51,7 @@ import {
 	requireAnyPermission,
 	requireVehiclePermission,
 } from "../lib/requirePermissions.js";
+import { getEntityHistory, INVALID_HISTORY_LIMIT, parseHistoryLimit } from "../controllers/logsController.js";
 
 const router = Router();
 
@@ -816,6 +817,30 @@ router.post("/:id/maintenance/reminders/:reminderId/unacknowledge", requirePermi
 			return res.status(404).json(createErrorResponse(ErrorCodes.NOT_FOUND, result.err));
 		}
 		res.json(createSuccessResponse(result.reminder));
+	} catch (err) {
+		next(err);
+	}
+});
+
+router.get("/:id/changes", requireAnyPermission("view_vehicles", "manage_vehicles"), async (req, res, next) => {
+	try {
+		const orgId = req.user!.organization_id as string;
+		const id = req.params.id as string;
+
+		let limit: number;
+		try {
+			limit = parseHistoryLimit(req.query.limit);
+		} catch {
+			return res
+				.status(400)
+				.json(createErrorResponse(ErrorCodes.VALIDATION_ERROR, INVALID_HISTORY_LIMIT));
+		}
+
+		const results = await getEntityHistory(orgId, "vehicle", id, limit);
+
+		if (results.err)
+			return res.status(500).json(createErrorResponse(ErrorCodes.SERVER_ERROR, results.err));
+		res.json(createSuccessResponse(results.rows, { count: results.rows.length, hasMore: results.hasMore, total: results.total }));
 	} catch (err) {
 		next(err);
 	}

@@ -108,7 +108,7 @@ describe("getEntityHistory — same denylist and redaction (review B3 / L1)", ()
 
 		const r = await getEntityHistory("org-1", "job", "job-1", 20);
 		expect(r.rows[0].changes).toEqual({ name: { old: "a", new: "b" } });
-		const where = fake.log.findMany.mock.calls[0][0].where;
+		const where = fake.log.findMany.mock.calls.at(-1)![0].where;
 		expect(notClauses(where)).toEqual(expect.arrayContaining([{ event_type: { contains: ".password." } }]));
 		expect(leaves(where)).toEqual(expect.arrayContaining([{ organization_id: "org-1" }, { entity_type: "job" }]));
 	});

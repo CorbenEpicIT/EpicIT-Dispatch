@@ -15,7 +15,7 @@ export interface ActivityLog {
 	organization_id: string | null;
 }
 
-type entityTypes = "job" | "invoice" | "quote" | "request" | "project" | "client" | "recurring_plan";
+type entityTypes = "job" | "invoice" | "quote" | "request" | "project" | "client" | "recurring_plan" | "vehicle";
 
 export type ChangeScope =
 	| { kind: "actor"; type: "dispatcher" | "technician"; id: string }

@@ -42,7 +42,7 @@ describe("getEntityHistory — deleted children via parent breadcrumb (review P2
 		expect(r.total).toBe(2);
 		expect(r.hasMore).toBe(false);
 
-		const where = fake.log.findMany.mock.calls[0][0].where;
+		const where = fake.log.findMany.mock.calls.at(-1)![0].where;
 		const all = leaves(where);
 		// live children still matched by id
 		expect(all).toEqual(expect.arrayContaining([{ entity_type: "job_visit" }, { entity_id: { in: ["visit-1"] } }]));
@@ -56,6 +56,22 @@ describe("getEntityHistory — deleted children via parent breadcrumb (review P2
 		expect(all).toEqual(expect.arrayContaining([{ organization_id: "org-1" }]));
 		// count uses the same filter so total/hasMore stay consistent
 		expect(fake.log.count.mock.calls[0][0].where).toEqual(where);
+	});
+
+	it("matches a deleted child's earlier rows by the id on its breadcrumbed delete row", async () => {
+		fake.vehicle_stock_item.findMany.mockResolvedValue([]);
+		fake.vehicle_stock_adjustment.findMany.mockResolvedValue([]);
+		fake.vehicle_restock_request.findMany.mockResolvedValue([]);
+		fake.vehicle_restock_record.findMany.mockResolvedValue([]);
+		fake.vehicle_maintenance_record.findMany.mockResolvedValue([]);
+		fake.vehicle_maintenance_reminder.findMany.mockResolvedValue([]);
+		fake.log.findMany.mockResolvedValueOnce([{ entity_type: "vehicle_maintenance_reminder", entity_id: "rem-gone" }]);
+
+		await getEntityHistory("org-1", "vehicle", "veh-1", 20);
+		const where = fake.log.findMany.mock.calls.at(-1)![0].where;
+		expect(clausesWith(where, ["entity_type", "entity_id"])).toEqual(
+			expect.arrayContaining([{ entity_type: "vehicle_maintenance_reminder", entity_id: "rem-gone" }]),
+		);
 	});
 
 	it("invoice group matches deleted payments/notes through the breadcrumb", async () => {
@@ -74,7 +90,7 @@ describe("getEntityHistory — deleted children via parent breadcrumb (review P2
 	it("project group matches deleted jobs that were attached to the project", async () => {
 		fake.job.findMany.mockResolvedValue([]);
 		await getEntityHistory("org-1", "project", "proj-1", 20);
-		const where = fake.log.findMany.mock.calls[0][0].where;
+		const where = fake.log.findMany.mock.calls.at(-1)![0].where;
 		expect(clausesWith(where, ["entity_type", "changes"])).toEqual([
 			{ entity_type: "job", changes: { path: ["_parent_id", "new"], equals: "proj-1" } },
 		]);

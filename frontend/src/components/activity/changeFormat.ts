@@ -109,6 +109,12 @@ const ENTITY_LABELS: Record<string, string> = {
 	technician: "Technician",
 	dispatcher: "Dispatcher",
 	vehicle: "Vehicle",
+	vehicle_stock_item: "Stock item",
+	vehicle_stock_adjustment: "Stock adjustment",
+	vehicle_restock_request: "Restock request",
+	vehicle_restock_record: "Restock",
+	vehicle_maintenance_record: "Maintenance record",
+	vehicle_maintenance_reminder: "Maintenance reminder",
 	inventory_item: "Inventory item",
 	recurring_plan: "Recurring plan",
 	recurring_occurrence: "Recurring occurrence",
@@ -242,7 +248,7 @@ const CURRENCY_FIELDS = new Set([
 const NEVER_CURRENCY = new Set(["tax_rate", "discount_value", "quantity", "generated_count"]);
 
 // Stored at UTC midnight — rendering in the org timezone shows the previous day.
-const DATE_ONLY_FIELDS = new Set(["starts_at", "target_end_at", "due_date", "issue_date"]);
+const DATE_ONLY_FIELDS = new Set(["starts_at", "target_end_at", "due_date", "issue_date", "performed_at", "due_at", "baseline_at"]);
 
 export const formatValue = (key: string, value: unknown, tz: string): string => {
 	if (value === null || value === undefined || value === "") return EM_DASH;
@@ -298,7 +304,9 @@ export const formatChange = (log: ActivityLog, tz: string): ChangeEntry => {
 				if (isBreadcrumb(key) || isSensitiveKey(key)) return [];
 
 				const from = formatValue(key, delta.old, tz);
-				const to = formatValue(key, delta.new, tz);
+				const to = key === "acknowledged_at" && delta.new == null
+					? "Unacknowledged"
+					: formatValue(key, delta.new, tz);
 				if (from === to) return [];
 
 				return [{ key, label: labelFor(key), from, to, refType: ID_REF_FIELDS[key]}];
