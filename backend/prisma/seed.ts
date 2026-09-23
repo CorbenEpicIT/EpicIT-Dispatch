@@ -111,7 +111,7 @@ async function main() {
 
 	const org = await db.organization.create({
 		data: {
-			name:     "Epic HVAC Services",
+			name:     "TradeWerks",
 			timezone: "America/Chicago",
 			tax_rate: 0.0825,
 			phone:    "(608) 555-0142",

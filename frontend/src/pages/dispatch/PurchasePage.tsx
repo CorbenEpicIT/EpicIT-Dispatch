@@ -10,7 +10,7 @@ export type ReportTab = "purchasing" | "field_purchases";
 const STORAGE_KEY = "purchase_activeTab";
 
 const TABS: { id: ReportTab; label: string; permission?: string }[] = [
-    { id: "purchasing", label: "Purchasing", permission: "view_purchases" },
+    { id: "purchasing", label: "Purchase Orders", permission: "view_purchases" },
     { id: "field_purchases", label: "Field Purchases", permission: "view_purchases" },
 ];
 
