@@ -18,7 +18,7 @@ import {
 import { useAuthStore } from "../../auth/authStore";
 import { usePermission } from "../../hooks/usePermission";
 import { useTechnicianByIdQuery } from "../../hooks/useTechnicians";
-import { useVehiclesQuery, useSetTechnicianVehicleMutation, useVehicleMaintenanceQuery, useVehicleMaintenanceReminderQuery } from "../../hooks/useVehicles";
+import { useVehiclesQuery, useSetTechnicianVehicleMutation, useVehicleMaintenanceReminderQuery } from "../../hooks/useVehicles";
 import { dueFor, STATUS_RANK, STATUS_LABEL, STATUS_CLASSNAME, type ReminderDue } from "../../util/vehicleMaintenanceStatus";
 import {
 	useVehicleStockQuery,
@@ -804,11 +804,10 @@ export default function TechnicianVehiclePage() {
 	const { data: stockItems = [] } = useVehicleStockQuery(currentVehicleId);
 	const { data: stockConflicts = [] } = useVehicleStockConflictsQuery();
 	const myConflicts = stockConflicts.filter((c) => c.vehicleId === currentVehicleId);
-	const { data: maintenanceRecords = [] } = useVehicleMaintenanceQuery(currentVehicleId);
 	const { data: maintenanceReminders = [] } = useVehicleMaintenanceReminderQuery(currentVehicleId);
-	const currentOdometerMi = maintenanceRecords.find((r) => r.odometer_mi != null)?.odometer_mi ?? null;
+	const currentOdometerMi = vehicles.find((v) => v.id === currentVehicleId)?.current_odometer_mi ?? null;
 	const dueReminders = maintenanceReminders
-		.map((reminder) => ({ reminder, due: dueFor(reminder, maintenanceRecords, currentOdometerMi) }))
+		.map((reminder) => ({ reminder, due: dueFor(reminder, currentOdometerMi) }))
 		.filter(({ due, reminder }) => (due.status === "overdue" || due.status === "duesoon") && reminder.acknowledged_at == null)
 		.sort((a, b) => STATUS_RANK[a.due.status] - STATUS_RANK[b.due.status] || a.due.urgency - b.due.urgency);
 	const setVehicle = useSetTechnicianVehicleMutation();
@@ -2330,6 +2329,6 @@ export default function TechnicianVehiclePage() {
 					setIsModalOpen={setIsCreateReminderModalOpen}
 				/>
 			)}
-		</div>
+		</TechPage>
 	);
 }
