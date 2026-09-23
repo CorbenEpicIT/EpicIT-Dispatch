@@ -3,7 +3,8 @@ import { Receipt, X } from "lucide-react";
 import { FormWizardContainer } from "../../ui/forms/FormWizardContainer";
 import { CATEGORY_TILES, TINT_CLASSES } from "./categoryTiles";
 import FilterableSelect, { type FilterableOption } from "../../ui/forms/FilterableSelect";
-import { useCreateMaintenanceRecordMutation, useMaintenanceSourceLinesQuery } from "../../../hooks/useVehicles";
+import { useCreateMaintenanceRecordMutation, useMaintenanceSourceLinesQuery, useVehicleMaintenanceQuery, useVehicleMaintenanceReminderQuery, useVehicleOdometer } from "../../../hooks/useVehicles";
+import { dueFor, STATUS_LABEL, STATUS_CLASSNAME, STATUS_RANK, type ReminderStatus } from "../../../util/vehicleMaintenanceStatus";
 import {
   CreateMaintenanceRecordSchema,
   MAINTENANCE_CATEGORY_LABELS,
@@ -42,6 +43,7 @@ interface CreateMaintenanceRecordProps {
     isModalOpen: boolean;
     setIsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
     defaultCategory?: MaintenanceCategory | null;
+    preselectedReminderId?: string | null;
 }
 export default function CreateMaintenanceRecordModal ({
   vehicleId,
@@ -49,6 +51,7 @@ export default function CreateMaintenanceRecordModal ({
   isModalOpen,
   setIsModalOpen,
   defaultCategory = null,
+  preselectedReminderId = null,
 }: CreateMaintenanceRecordProps) {
     const [category, setCategory] = useState<MaintenanceCategory | null>(defaultCategory);
     const [datePerformed, setDatePerformed] = useState<string>(() => new Date().toISOString().slice(0, 10));
@@ -64,6 +67,24 @@ export default function CreateMaintenanceRecordModal ({
     const [purchaseAttached, setPurchaseAttached] = useState<string>("");
     const [purchaseQuery, setPurchaseQuery] = useState<string>("");
     const [isCreatePurchaseModalOpen, setIsCreatePurchaseModalOpen] = useState(false);
+    const [coveredReminderIds, setCoveredReminderIds] = useState<Set<string>>(
+        () => new Set(preselectedReminderId ? [preselectedReminderId] : [])
+    );
+    const { data: reminders } = useVehicleMaintenanceReminderQuery(vehicleId);
+    const { data: records } = useVehicleMaintenanceQuery(vehicleId);
+    const currentOdometerMi = useVehicleOdometer(vehicleId);
+    const statusOf = (reminder: NonNullable<typeof reminders>[number]) => dueFor(reminder, currentOdometerMi).status;
+    const categoryReminders = (reminders ?? [])
+        .filter((r) => r.category === category && (r.repeats || r.completed_at == null))
+        .sort((a, b) => STATUS_RANK[statusOf(a)] - STATUS_RANK[statusOf(b)]);
+    const toggleCovered = (id: string) => {
+        setCoveredReminderIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
     const { mutateAsync: createPurchaseOrder } = useCreatePurchaseMutation();
     const { mutateAsync: createMaintenanceRecord } = useCreateMaintenanceRecordMutation();
     const toast = useToast();
@@ -131,6 +152,7 @@ export default function CreateMaintenanceRecordModal ({
         setSupplierCreateSeed("");
         setPurchaseAttached("");
         setPurchaseQuery("");
+        setCoveredReminderIds(new Set());
     }
 
     const invokeCreate = async () => {
@@ -150,6 +172,7 @@ export default function CreateMaintenanceRecordModal ({
             notes: maintenanceNotes.trim() || undefined,
             source_purchase_line_id: matchedPurchase?.source === "purchase" ? matchedPurchase.id : undefined,
             source_field_purchase_line_id: matchedPurchase?.source === "field_purchase" ? matchedPurchase.id : undefined,
+            reminder_ids: categoryReminders.filter((r) => coveredReminderIds.has(r.id)).map((r) => r.id),
         };
 
         const result = CreateMaintenanceRecordSchema.safeParse(input);
@@ -175,7 +198,7 @@ export default function CreateMaintenanceRecordModal ({
     const formContent = useMemo(() => (
         <div className="space-y-4" >
             <label className={LABEL}>Category</label>
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
                 {CATEGORY_TILES.map((t) => {
                     const Icon = t.icon;
                     const isSelected = category === t.value;
@@ -199,6 +222,25 @@ export default function CreateMaintenanceRecordModal ({
                     )
                 })}
             </div>
+            {categoryReminders.length > 0 && (
+                <>
+                    <label className={LABEL}>Reminders</label>
+                    <div className="rounded-lg border border-border-subtle bg-base divide-y divide-border-subtle max-h-64 overflow-y-auto">
+                        {categoryReminders.map((r) => (
+                            <label key={r.id} className="flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={coveredReminderIds.has(r.id)}
+                                    onChange={() => toggleCovered(r.id)}
+                                />
+                                <span className="flex-1 min-w-0 truncate">{r.title}</span>
+                                <span className="hidden sm:inline text-xs text-text-muted shrink-0">{r.repeats ? "resets interval" : "mark done"}</span>
+                                <StatusBadge status={statusOf(r)} />
+                            </label>
+                        ))}
+                    </div>
+                </>
+            )}
             <label className={LABEL} >Service Details</label>
             <div className="rounded-lg border border-border-subtle bg-base p-3 space-y-2">
                 <div className="grid grid-cols-2 gap-2">
@@ -220,6 +262,11 @@ export default function CreateMaintenanceRecordModal ({
                             value={odometer}
                             onChange={(e) => setOdometer(e.target.value.replace(/[^0-9]/g, ""))}
                         />
+                        {currentOdometerMi != null && (
+                            <p className="mt-0.5 text-right text-[10px] text-text-muted">
+                                currently at {currentOdometerMi.toLocaleString()} mi
+                            </p>
+                        )}
                     </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -271,7 +318,7 @@ export default function CreateMaintenanceRecordModal ({
                 <p className="text-sm text-text-muted">No purchases on file for this vehicle to link.</p>
             )}
         </div>
-    ), [category, datePerformed, odometer, vendor, vendorOptions, cost, costFocused, maintenanceNotes, purchaseOptions, purchaseQuery]);
+    ), [category, datePerformed, odometer, vendor, vendorOptions, cost, costFocused, maintenanceNotes, purchaseOptions, purchaseQuery, reminders, records, coveredReminderIds]);
     return (
         <>
             <FormWizardContainer
@@ -328,4 +375,13 @@ export default function CreateMaintenanceRecordModal ({
             />
         </>
     )
+}
+
+function StatusBadge({ status }: { status: ReminderStatus }) {
+    if (status === "none") return null;
+    return (
+        <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full shrink-0 ${STATUS_CLASSNAME[status]}`}>
+            {STATUS_LABEL[status]}
+        </span>
+    );
 }

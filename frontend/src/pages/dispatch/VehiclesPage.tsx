@@ -119,16 +119,16 @@ function FleetPulse({
 				<div className="flex items-center gap-1 text-xs font-semibold" title="Vehicle Maintenance Reminders">
 					<Wrench size={12} className="text-text-muted flex-shrink-0" />
 					<button
-						onClick={() => onFilter(stockFilter === "maint-overdue" ? null : "maint-overdue")}
+						onClick={() => onFilter(stockFilter === "maintenance-overdue" ? null : "maintenance-overdue")}
 						disabled={overdueCount === 0}
-						className={`px-2 py-0.5 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${chip(stockFilter === "maint-overdue", "error")}`}
+						className={`px-2 py-0.5 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${chip(stockFilter === "maintenance-overdue", "error")}`}
 					>
 						{overdueCount} overdue
 					</button>
 					<button
-						onClick={() => onFilter(stockFilter === "maint-duesoon" ? null : "maint-duesoon")}
+						onClick={() => onFilter(stockFilter === "maintenance-duesoon" ? null : "maintenance-duesoon")}
 						disabled={dueSoonCount === 0}
-						className={`px-2 py-0.5 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${chip(stockFilter === "maint-duesoon", "warning")}`}
+						className={`px-2 py-0.5 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${chip(stockFilter === "maintenance-duesoon", "warning")}`}
 					>
 						{dueSoonCount} due soon
 					</button>
@@ -223,8 +223,9 @@ export default function VehiclesPage() {
 
 	const MANAGE_VEHICLES = usePermission("manage_inventory");
 
-	const overdueVehicleIds = new Set(maintenanceAlerts.filter((a) => a.status === "overdue").map((a) => a.vehicleId));
-	const dueSoonVehicleIds = new Set(maintenanceAlerts.filter((a) => a.status === "duesoon").map((a) => a.vehicleId));
+	const openAlerts = maintenanceAlerts.filter((a) => !a.acknowledged);
+	const overdueVehicleIds = new Set(openAlerts.filter((a) => a.status === "overdue").map((a) => a.vehicleId));
+	const dueSoonVehicleIds = new Set(openAlerts.filter((a) => a.status === "duesoon").map((a) => a.vehicleId));
 
 	const filteredVehicles = vehicles?.filter((v) => {
 		if (activeTerms.length > 0) {
@@ -244,7 +245,7 @@ export default function VehiclesPage() {
 			if (stockFilter === "low" && health === "ok") return false;
 			if (stockFilter === "issues" && health === "ok") return false;
 			if (stockFilter === "maintenance-overdue" && !overdueVehicleIds.has(v.id)) return false;
-			if (stockFilter === "hover:cursor-pointer-duesoon" && !dueSoonVehicleIds.has(v.id)) return false;
+			if (stockFilter === "maintenance-duesoon" && !dueSoonVehicleIds.has(v.id)) return false;
 		}
 		return true;
 	});

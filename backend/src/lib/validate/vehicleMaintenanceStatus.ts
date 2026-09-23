@@ -6,14 +6,9 @@ import type { Prisma } from "../../../generated/prisma/client.js";
 export type MaintenanceReminderStatus = "overdue" | "duesoon" | "upcoming" | "none";
 
 type Reminder = Prisma.vehicle_maintenance_reminderGetPayload<{}>;
-type Record_ = Prisma.vehicle_maintenance_recordGetPayload<{}>;
 
 const DUE_SOON_DAYS = 7;
 const DUE_SOON_MILES = 500;
-
-function latestOf<T extends { performed_at: Date; created_at: Date }>(records: T[]): T | undefined {
-	return [...records].sort((a, b) => b.performed_at.getTime() - a.performed_at.getTime() || b.created_at.getTime() - a.created_at.getTime())[0];
-}
 
 function addMonths(date: Date, months: number): Date {
 	return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, date.getUTCDate()));
@@ -34,31 +29,19 @@ function daysUntil(date: Date): number {
 	return Math.round((target - today) / DAY_MS);
 }
 
-// Latest odometer reading logged, any category — "current mileage" basis.
-export function currentOdometerFor(records: Record_[]): number | null {
-	return latestOf(records.filter((r) => r.odometer_mi != null))?.odometer_mi ?? null;
-}
-
 export interface DueTargets {
 	dueAt: Date | null;
 	dueMiles: number | null;
 }
 
-// Anchor logic shared by classifyReminder (status) and the alerts endpoint (display).
-export function resolveDueTargets(reminder: Reminder, records: Record_[]): DueTargets {
+// Repeating reminders anchor on baseline_*, which moves when a record covers the reminder.
+export function resolveDueTargets(reminder: Reminder): DueTargets {
 	if (!reminder.repeats) {
 		return { dueAt: reminder.due_at, dueMiles: reminder.due_odometer_mi };
 	}
 
-	// Compared by calendar day, not instant — performed_at is date-only but baseline_at has a time.
-	const baselineDay = reminder.baseline_at
-		? new Date(Date.UTC(reminder.baseline_at.getUTCFullYear(), reminder.baseline_at.getUTCMonth(), reminder.baseline_at.getUTCDate()))
-		: null;
-	const latest = latestOf(
-		records.filter((r) => r.category === reminder.category && (!baselineDay || r.performed_at >= baselineDay)),
-	);
-	const anchorAt = latest?.performed_at ?? reminder.baseline_at;
-	const anchorOdometerMi = latest?.odometer_mi ?? reminder.baseline_odometer_mi;
+	const anchorAt = reminder.baseline_at;
+	const anchorOdometerMi = reminder.baseline_odometer_mi;
 
 	let dueAt: Date | null = null;
 	let dueMiles: number | null = null;
@@ -73,12 +56,11 @@ export function resolveDueTargets(reminder: Reminder, records: Record_[]): DueTa
 
 export function classifyReminder(
 	reminder: Reminder,
-	records: Record_[],
 	currentOdometerMi: number | null,
 ): MaintenanceReminderStatus {
 	if (!reminder.repeats && reminder.completed_at != null) return "none";
 
-	const { dueAt, dueMiles } = resolveDueTargets(reminder, records);
+	const { dueAt, dueMiles } = resolveDueTargets(reminder);
 
 	const daysLeft = dueAt != null ? daysUntil(dueAt) : null;
 	const milesLeft = dueMiles != null && currentOdometerMi != null ? dueMiles - currentOdometerMi : null;

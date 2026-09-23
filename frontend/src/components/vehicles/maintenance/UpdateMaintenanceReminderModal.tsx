@@ -1,7 +1,7 @@
 import { FormWizardContainer } from "../../ui/forms/FormWizardContainer";
 import { useMemo, useState } from "react";
 import { useToast } from "../../ui/useToast";
-import { useUpdateMaintenanceReminderMutation, useVehicleMaintenanceQuery } from "../../../hooks/useVehicles";
+import { useUpdateMaintenanceReminderMutation, useVehicleOdometer } from "../../../hooks/useVehicles";
 import {
     MAINTENANCE_CATEGORY_LABELS,
     UpdateMaintenanceReminderSchema,
@@ -49,10 +49,9 @@ export default function UpdateMaintenanceReminderModal({
 
     const toast = useToast();
     const { mutateAsync: updateMaintenanceReminder } = useUpdateMaintenanceReminderMutation();
-    const { data: records } = useVehicleMaintenanceQuery(vehicleId);
     const [isLoading, setIsLoading] = useState(false);
 
-    const currentOdometerMi = records?.find((r) => r.odometer_mi != null)?.odometer_mi ?? null;
+    const currentOdometerMi = useVehicleOdometer(vehicleId);
 
     const resetForm = () => {
         setCategory(reminder.category);
@@ -119,7 +118,7 @@ export default function UpdateMaintenanceReminderModal({
     const formContent = useMemo(() => (
         <div className="space-y-4">
             <label className={LABEL}>Category</label>
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
                 {CATEGORY_TILES.map((t) => {
                     const Icon = t.icon;
                     const isSelected = category === t.value;

@@ -46,3 +46,20 @@ export async function applyOdometerIncrement(sdb: ReturnType<typeof getScopedDb>
         });
     }
 }
+
+// A logged reading is ground truth, but a backdated record must not roll the odometer back.
+export async function applyRecordOdometer(
+	sdb: ReturnType<typeof getScopedDb>,
+	vehicleId: string,
+	record: { odometer_mi: number | null; performed_at: Date },
+) {
+	if (record.odometer_mi == null) return;
+	const vehicle = await sdb.vehicle.findFirst({ where: { id: vehicleId }, select: { odometer_updated_at: true } });
+	const last = vehicle?.odometer_updated_at;
+	// performed_at is date-only, so compare against the calendar day of the last update
+	if (last && record.performed_at.getTime() < Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate())) return;
+	await sdb.vehicle.update({
+		where: { id: vehicleId },
+		data: { current_odometer_mi: record.odometer_mi, odometer_updated_at: record.performed_at },
+	});
+}

@@ -37,7 +37,8 @@ import {
 	mapMaintenanceReminder,
 } from "../types/dto/vehicles.js";
 import { createMaintenanceRecordSchema, createMaintenanceReminderSchema, updateMaintenanceRecordSchema, updateMaintenanceReminderSchema } from "../lib/validate/vehicles.js";
-import { currentOdometerFor, classifyReminder, resolveDueTargets } from "../lib/validate/vehicleMaintenanceStatus.js";
+import { classifyReminder, resolveDueTargets } from "../lib/validate/vehicleMaintenanceStatus.js";
+import { applyRecordOdometer } from "../lib/vehicleMileage.js";
 
 // Stock-item quantities nested under a restock request only carry a partial
 // inventory_item select (id/name/unit/quantity, no Decimal fields) — convert
@@ -3211,9 +3212,10 @@ export const createMaintenanceRecord = async (orgId: string, vehicleId: string, 
 			return { err: "Source purchase line belongs to another vehicle"}
 	}
 
+	const { reminder_ids, ...recordData } = parsed;
 	const record = await sdb.vehicle_maintenance_record.create({
 		data: {
-			...parsed,
+			...recordData,
 			performed_at: new Date(parsed.performed_at),
 			performed_by_id: context?.dispatcherId ?? null,
 			performed_by_tech_id: context?.dispatcherId ? null : (context?.techId ?? null),
@@ -3222,11 +3224,39 @@ export const createMaintenanceRecord = async (orgId: string, vehicleId: string, 
 		}
 	});
 
-	if (record.odometer_mi != null) {
-		await sdb.vehicle.update({
-			where: { id: vehicleId },
-			data: { current_odometer_mi: record.odometer_mi, odometer_updated_at: record.performed_at },
+	await applyRecordOdometer(sdb, vehicleId, record);
+
+	if (reminder_ids?.length) {
+		const covered = await sdb.vehicle_maintenance_reminder.findMany({
+			where: { id: { in: reminder_ids }, vehicle_id: vehicleId },
 		});
+		for (const reminder of covered) {
+			if (!reminder.repeats) {
+				if (reminder.completed_at == null) await completeMaintenanceReminder(orgId, vehicleId, reminder.id, context);
+				continue;
+			}
+			// backdated record older than the current anchor — don't move the due date backwards
+			const anchor = reminder.baseline_at;
+			if (anchor && record.performed_at.getTime() < Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), anchor.getUTCDate())) continue;
+
+			const baseline_odometer_mi = record.odometer_mi ?? vehicle.current_odometer_mi;
+			await sdb.vehicle_maintenance_reminder.update({
+				where: { id: reminder.id },
+				data: { baseline_at: record.performed_at, baseline_odometer_mi, acknowledged_at: null },
+			});
+			await logActivity({
+				event_type: "vehicle_maintenance_reminder.serviced",
+				action: "updated",
+				entity_type: "vehicle_maintenance_reminder",
+				entity_id: reminder.id,
+				organization_id: orgId,
+				...getActorInfo(context),
+				changes: {
+					baseline_at:          { old: reminder.baseline_at, new: record.performed_at },
+					baseline_odometer_mi: { old: reminder.baseline_odometer_mi, new: baseline_odometer_mi },
+				},
+			});
+		}
 	}
 
 	await logActivity({
@@ -3300,12 +3330,7 @@ export const updateMaintenanceRecord = async(orgId: string, vehicleId: string, r
 		},
 	});
 
-	if (record.odometer_mi != null) {
-		await sdb.vehicle.update({
-			where: { id: vehicleId },
-			data: { current_odometer_mi: record.odometer_mi, odometer_updated_at: record.performed_at },
-		});
-	}
+	await applyRecordOdometer(sdb, vehicleId, record);
 
 	const changes = buildChanges(existing, parsed, [
 		"category", "performed_at", "odometer_mi", "interval_miles",
@@ -3456,13 +3481,11 @@ export const createMaintenanceReminder = async (orgId: string, vehicleId: string
 	const vehicle = await sdb.vehicle.findFirst({where: {id: vehicleId}});
 	if (!vehicle) return { err: "Vehicle not found"};
 
-	// repeating only: anchors the due calc until a matching-category record exists
+	// repeating only: anchors the due calc until a record covers this reminder
 	const baseline = parsed.repeats
 		? {
 				baseline_at: new Date(),
-				baseline_odometer_mi: currentOdometerFor(
-					await sdb.vehicle_maintenance_record.findMany({ where: { vehicle_id: vehicleId } }),
-				),
+				baseline_odometer_mi: vehicle.current_odometer_mi,
 			}
 		: {};
 
@@ -3638,6 +3661,7 @@ interface MaintenanceAlert {
 	dueAt: string | null;
 	dueOdometerMi: number | null;
 	currentOdometerMi: number | null;
+	acknowledged: boolean;
 }
 
 export const getMaintenanceAlerts = async (orgId: string, scopeVehicleId?: string): Promise<MaintenanceAlert[]> => {
@@ -3648,28 +3672,16 @@ export const getMaintenanceAlerts = async (orgId: string, scopeVehicleId?: strin
 			completed_at: null,
 			...(scopeVehicleId ? { vehicle_id: scopeVehicleId } : {}),
 		},
-		include: { vehicle: { select: { id: true, name: true } } },
+		include: { vehicle: { select: { id: true, name: true, current_odometer_mi: true } } },
 	});
-	if (reminders.length === 0) return [];
-
-	const vehicleIds = [...new Set(reminders.map((r) => r.vehicle_id))];
-	const records = await sdb.vehicle_maintenance_record.findMany({ where: { vehicle_id: { in: vehicleIds } } });
-
-	const recordsByVehicle = new Map<string, typeof records>();
-	for (const record of records) {
-		const list = recordsByVehicle.get(record.vehicle_id) ?? [];
-		list.push(record);
-		recordsByVehicle.set(record.vehicle_id, list);
-	}
 
 	const alerts: MaintenanceAlert[] = [];
 	for (const reminder of reminders) {
-		const vehicleRecords = recordsByVehicle.get(reminder.vehicle_id) ?? [];
-		const odometer = currentOdometerFor(vehicleRecords);
-		const status = classifyReminder(reminder, vehicleRecords, odometer);
+		const odometer = reminder.vehicle.current_odometer_mi;
+		const status = classifyReminder(reminder, odometer);
 		if (status !== "overdue" && status !== "duesoon") continue;
 
-		const { dueAt, dueMiles } = resolveDueTargets(reminder, vehicleRecords);
+		const { dueAt, dueMiles } = resolveDueTargets(reminder);
 		alerts.push({
 			reminderId: reminder.id,
 			vehicleId: reminder.vehicle_id,
@@ -3680,9 +3692,10 @@ export const getMaintenanceAlerts = async (orgId: string, scopeVehicleId?: strin
 			dueAt: dueAt ? dueAt.toISOString() : null,
 			dueOdometerMi: dueMiles,
 			currentOdometerMi: odometer,
+			acknowledged: reminder.acknowledged_at != null,
 		});
 	}
 
 	const rank = { overdue: 0, duesoon: 1 } as const;
-	return alerts.sort((a, b) => rank[a.status] - rank[b.status]);
+	return alerts.sort((a, b) => Number(a.acknowledged) - Number(b.acknowledged) || rank[a.status] - rank[b.status]);
 }

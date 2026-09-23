@@ -1,10 +1,10 @@
-import { ShieldCheck, Plus, type LucideIcon, ChevronDown, Pencil, BellPlus } from "lucide-react";
+import { Plus, type LucideIcon, ChevronDown, Pencil, BellPlus } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useVehicleMaintenanceQuery, useVehicleMaintenanceReminderQuery, useCompleteMaintenanceReminderMutation } from "../../../hooks/useVehicles";
+import { useVehicleMaintenanceQuery, useVehicleMaintenanceReminderQuery, useVehicleOdometer } from "../../../hooks/useVehicles";
 import { MAINTENANCE_CATEGORY_LABELS, type MaintenanceCategory, type VehicleMaintenanceRecord, type VehicleMaintenanceReminder } from "../../../types/vehicles";
-import { formatDateOnly, addMonths, daysUntil } from "../../../util/util";
-import { latestOf, dueFor, STATUS_RANK } from "../../../util/vehicleMaintenanceStatus";
+import { formatDateOnly, daysUntil } from "../../../util/util";
+import { latestOf, dueFor, scheduleText, STATUS_RANK } from "../../../util/vehicleMaintenanceStatus";
 import { useAnyPermission, usePermission } from "../../../hooks/usePermission";
 import CreateMaintenanceRecordModal from "./CreateMaintenanceRecordModal";
 import UpdateMaintenanceRecordModal from "./UpdateMaintenanceRecordModal";
@@ -19,28 +19,20 @@ interface maintenanceTabProps {
 }
 
 const CATEGORIES: { label: string; icon: LucideIcon; iconClassName: string; matches: MaintenanceCategory[] }[] = [
-    { label: "Oil & fluids", icon: CATEGORY_ICON.oil_change.icon, iconClassName: "bg-warning/15 text-warning-text", matches: ["oil_change"] },
+    { label: "Oil change", icon: CATEGORY_ICON.oil_change.icon, iconClassName: CATEGORY_ICON.oil_change.className, matches: ["oil_change"] },
+    { label: "Fluids", icon: CATEGORY_ICON.fluids.icon, iconClassName: CATEGORY_ICON.fluids.className, matches: ["fluids"] },
     { label: "Tires", icon: CATEGORY_ICON.tire.icon, iconClassName: "bg-primary-bg text-primary", matches: ["tire"] },
     { label: "Brakes", icon: CATEGORY_ICON.brake.icon, iconClassName: "bg-error/15 text-error-text", matches: ["brake"] },
-    { label: "Inspections & registration", icon: ShieldCheck, iconClassName: "bg-success/15 text-success-text", matches: ["inspection", "registration"] },
+    { label: "Inspection", icon: CATEGORY_ICON.inspection.icon, iconClassName: CATEGORY_ICON.inspection.className, matches: ["inspection"] },
+    { label: "Registration", icon: CATEGORY_ICON.registration.icon, iconClassName: CATEGORY_ICON.registration.className, matches: ["registration"] },
 ];
-
-function nextDueFor(latest?: VehicleMaintenanceRecord): string {
-    if (latest?.odometer_mi != null && latest.interval_miles != null) {
-        return `${(latest.odometer_mi + latest.interval_miles).toLocaleString()} mi`;
-    }
-    if (latest?.interval_months != null) {
-        return formatDateOnly(addMonths(latest.performed_at, latest.interval_months));
-    }
-    return "—";
-}
 
 function intervalFor(latest?: VehicleMaintenanceRecord): string {
     if (latest?.interval_miles == null && latest?.interval_months == null) return "—";
     return `${latest.interval_miles != null ? `${latest.interval_miles} mi` : "—"} / ${latest.interval_months != null ? `${latest.interval_months} mo` : "—"}`;
 }
 
-// Elapsed time since latest service — the "age"/"wear" stats look backward, unlike nextDueFor.
+// Elapsed time since latest service — the "age"/"wear" stats look backward, unlike next-due.
 function monthsSince(performedAt: string): number {
     return Math.max(0, Math.round(-daysUntil(performedAt) / 30));
 }
@@ -173,7 +165,6 @@ export default function MaintenanceTab ({ vehicleId }: maintenanceTabProps) {
     const [selectedRecord, setSelectedRecord] = useState<VehicleMaintenanceRecord | null>(null);
     const [selectedReminder, setSelectedReminder] = useState<VehicleMaintenanceReminder | null>(null);
     const [logServiceReminder, setLogServiceReminder] = useState<VehicleMaintenanceReminder | null>(null);
-    const { mutateAsync: completeReminder } = useCompleteMaintenanceReminderMutation();
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [activeRecords, setActiveRecords] = useState<Set<MaintenanceCategory>>(
       () => new Set(Object.keys(MAINTENANCE_CATEGORY_LABELS) as MaintenanceCategory[])
@@ -184,19 +175,19 @@ export default function MaintenanceTab ({ vehicleId }: maintenanceTabProps) {
         ?.filter((r) => new Date(r.performed_at).getFullYear() === currentYear)
         .reduce((sum, r) => sum + (r.cost ?? 0), 0);
 
-    const latestOilChange = latestOf((records ?? []).filter((r) => r.category === "oil_change"));
     const latestTire = latestOf((records ?? []).filter((r) => r.category === "tire"));
     const latestBrake = latestOf((records ?? []).filter((r) => r.category === "brake"));
-    const nextOilChange = nextDueFor(latestOilChange);
     const tireAge = latestTire ? `${monthsSince(latestTire.performed_at)} months` : "—";
     const brakeWear = latestBrake ? `${monthsSince(latestBrake.performed_at)} months` : "—";
 
-    // Records come back newest-first — the first one with an odometer reading is the latest known mileage.
-    const currentOdometerMi = records?.find((r) => r.odometer_mi != null)?.odometer_mi ?? null;
+    const currentOdometerMi = useVehicleOdometer(vehicleId);
     const sortedReminders = (reminders ?? [])
         .filter((reminder) => reminder.repeats || reminder.completed_at == null)
-        .map((reminder) => ({ reminder, due: dueFor(reminder, records ?? [], currentOdometerMi) }))
+        .map((reminder) => ({ reminder, due: dueFor(reminder, currentOdometerMi) }))
         .sort((a, b) => STATUS_RANK[a.due.status] - STATUS_RANK[b.due.status] || a.due.urgency - b.due.urgency);
+    const soonestReminderIn = (categories: MaintenanceCategory[]) =>
+        sortedReminders.find(({ reminder, due }) => categories.includes(reminder.category) && due.status !== "none");
+    const nextOilChange = soonestReminderIn(["oil_change"]);
 
     const entries = records?.filter(({ category }) => activeRecords.has(category));
     const toggleRecord = (key: MaintenanceCategory) => {
@@ -230,7 +221,10 @@ export default function MaintenanceTab ({ vehicleId }: maintenanceTabProps) {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-base border border-border-subtle rounded-lg py-3 px-4 min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Next oil change</p>
-                    <p className="text-lg font-semibold text-text-primary">{nextOilChange}</p>
+                    <p className="text-lg font-semibold text-text-primary truncate">{nextOilChange?.due.dueLines[0].replace(/^due /, "") ?? "—"}</p>
+                    {nextOilChange && (
+                        <p className="text-xs text-text-muted truncate">{nextOilChange.reminder.title}</p>
+                    )}
                 </div>
                 <div className="bg-base border border-border-subtle rounded-lg py-3 px-4 min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Tire age</p>
@@ -249,13 +243,12 @@ export default function MaintenanceTab ({ vehicleId }: maintenanceTabProps) {
             </div>
 
             {/** summaries */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {CATEGORIES.map(({ label, icon: Icon, iconClassName, matches }) => {
                     const categoryRecords = (records ?? []).filter((r) => matches.includes(r.category));
                     const latest = latestOf(categoryRecords);
 
-                    const nextDue = nextDueFor(latest);
-                    const interval = intervalFor(latest);
+                    const soonest = soonestReminderIn(matches);
 
                     return (
                         <div key={label} className="bg-base border border-border-subtle rounded-xl p-3 flex flex-col gap-2">
@@ -275,11 +268,13 @@ export default function MaintenanceTab ({ vehicleId }: maintenanceTabProps) {
                             </div>
                             <div className="flex justify-between gap-2 text-xs border-t border-border-subtle pt-1.5">
                                 <span className="text-text-muted">Next due</span>
-                                <span className="font-medium text-text-primary text-right">{nextDue}</span>
+                                <span className="font-medium text-text-primary text-right">
+                                    {soonest ? soonest.due.dueLines.map((line) => <span key={line} className="block">{line}</span>) : "—"}
+                                </span>
                             </div>
                             <div className="flex justify-between gap-2 text-xs border-t border-border-subtle pt-1.5">
                                 <span className="text-text-muted">Interval</span>
-                                <span className="font-medium text-text-primary text-right">{interval}</span>
+                                <span className="font-medium text-text-primary text-right">{soonest ? scheduleText(soonest.reminder) : "—"}</span>
                             </div>
                         </div>
                     );
@@ -374,12 +369,8 @@ export default function MaintenanceTab ({ vehicleId }: maintenanceTabProps) {
                     isModalOpen={isCreateModalOpen}
                     setIsModalOpen={setIsCreateModalOpen}
                     defaultCategory={logServiceReminder?.category ?? null}
-                    onSuccess={() => {
-                        if (logServiceReminder && !logServiceReminder.repeats) {
-                            completeReminder({ vehicleId, reminderId: logServiceReminder.id });
-                        }
-                        setLogServiceReminder(null);
-                    }}
+                    preselectedReminderId={logServiceReminder?.id ?? null}
+                    onSuccess={() => setLogServiceReminder(null)}
                 />
             )}
             {isEditModalOpen && selectedRecord && (

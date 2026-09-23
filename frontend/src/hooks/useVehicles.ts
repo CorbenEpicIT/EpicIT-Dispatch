@@ -13,6 +13,11 @@ export const useVehiclesQuery = (status?: string): UseQueryResult<Vehicle[], Err
 	});
 };
 
+export const useVehicleOdometer = (id: string | null | undefined): number | null => {
+	const { data } = useVehiclesQuery();
+	return data?.find((v) => v.id === id)?.current_odometer_mi ?? null;
+};
+
 export const useVehicleMaintenanceQuery = (id: string | null | undefined): UseQueryResult<VehicleMaintenanceRecord[], Error> => {
 	return useQuery({
 		queryKey: qk.vehicles.maintenance(id ?? ""),
@@ -120,6 +125,9 @@ export const useCreateMaintenanceRecordMutation = () => {
 		mutationFn: ({vehicleId, data} : { vehicleId: string, data: CreateMaintenanceRecordInput}) => vehiclesApi.createMaintenanceRecord(vehicleId, data),
 		onSuccess: (result: VehicleMaintenanceRecord, {vehicleId}) => {
 			qc.invalidateQueries({ queryKey: qk.vehicles.maintenance(vehicleId)});
+			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceReminders(vehicleId)});
+			qc.invalidateQueries({ queryKey: qk.vehicles.list() });
+			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceAlerts });
 		}
 	})
 }
@@ -130,6 +138,8 @@ export const useUpdateMaintenanceRecordMutation = () => {
 		mutationFn: ({vehicleId, recordId, data} : { vehicleId: string, recordId: string, data: UpdateMaintenanceRecordInput}) => vehiclesApi.updateMaintenanceRecord(vehicleId, recordId, data),
 		onSuccess: (result: VehicleMaintenanceRecord, {vehicleId}) => {
 			qc.invalidateQueries({ queryKey: qk.vehicles.maintenance(vehicleId)});
+			qc.invalidateQueries({ queryKey: qk.vehicles.list() });
+			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceAlerts });
 		}
 	})
 }
@@ -140,6 +150,7 @@ export const useDeleteMaintenanceRecordMutation = () => {
 		mutationFn: ({vehicleId, reminderId} : { vehicleId: string, reminderId: string}) => vehiclesApi.deleteMaintenanceRecord(vehicleId, reminderId),
 		onSuccess: (data: void, {vehicleId}) => {
 			qc.invalidateQueries({ queryKey: qk.vehicles.maintenance(vehicleId)});
+			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceAlerts });
 		}
 	})
 }
@@ -150,6 +161,7 @@ export const useCreateMaintenanceReminderMutation = () => {
 		mutationFn: ({vehicleId, data} : { vehicleId: string, data: CreateMaintenanceReminderInput}) => vehiclesApi.createMaintenanceReminder(vehicleId, data),
 		onSuccess: (result: VehicleMaintenanceReminder, {vehicleId}) => {
 			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceReminders(vehicleId)});
+			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceAlerts });
 		}
 	})
 }
@@ -160,6 +172,7 @@ export const useUpdateMaintenanceReminderMutation = () => {
 		mutationFn: ({vehicleId, reminderId, data} : { vehicleId: string, reminderId: string, data: UpdateMaintenanceReminderInput}) => vehiclesApi.updateMaintenanceReminder(vehicleId, reminderId, data),
 		onSuccess: (result: VehicleMaintenanceReminder, {vehicleId}) => {
 			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceReminders(vehicleId)});
+			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceAlerts });
 		}
 	})
 }
@@ -170,6 +183,7 @@ export const useDeleteMaintenanceReminderMutation = () => {
 		mutationFn: ({vehicleId, reminderId} : { vehicleId: string, reminderId: string}) => vehiclesApi.deleteMaintenanceReminder(vehicleId, reminderId),
 		onSuccess: (data: void, {vehicleId}) => {
 			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceReminders(vehicleId)});
+			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceAlerts });
 		}
 	})
 }
@@ -180,6 +194,7 @@ export const useAcknowledgeMaintenanceReminderMutation = () => {
 		mutationFn: ({vehicleId, reminderId} : { vehicleId: string, reminderId: string}) => vehiclesApi.acknowledgeMaintenanceReminder(vehicleId, reminderId),
 		onSuccess: (result: VehicleMaintenanceReminder, {vehicleId}) => {
 			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceReminders(vehicleId)});
+			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceAlerts });
 		}
 	})
 }
@@ -190,6 +205,7 @@ export const useUnacknowledgeMaintenanceReminderMutation = () => {
 		mutationFn: ({vehicleId, reminderId} : { vehicleId: string, reminderId: string}) => vehiclesApi.unacknowledgeMaintenanceReminder(vehicleId, reminderId),
 		onSuccess: (result: VehicleMaintenanceReminder, {vehicleId}) => {
 			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceReminders(vehicleId)});
+			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceAlerts });
 		}
 	})
 }
@@ -200,6 +216,7 @@ export const useCompleteMaintenanceReminderMutation = () => {
 		mutationFn: ({vehicleId, reminderId} : { vehicleId: string, reminderId: string}) => vehiclesApi.completeMaintenanceReminder(vehicleId, reminderId),
 		onSuccess: (result: VehicleMaintenanceReminder, {vehicleId}) => {
 			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceReminders(vehicleId)});
+			qc.invalidateQueries({ queryKey: qk.vehicles.maintenanceAlerts });
 		}
 	})
 }

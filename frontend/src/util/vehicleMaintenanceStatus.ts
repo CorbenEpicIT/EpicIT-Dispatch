@@ -31,10 +31,9 @@ export interface ReminderDue {
 	urgency: number;
 }
 
-// Repeating reminders compute their due date from the latest matching record + interval.
+// Repeating reminders compute their due date from baseline_* (moved when a record covers them) + interval.
 export function dueFor(
 	reminder: VehicleMaintenanceReminder,
-	records: VehicleMaintenanceRecord[],
 	currentOdometerMi: number | null,
 ): ReminderDue {
 	if (!reminder.repeats && reminder.completed_at != null) {
@@ -45,14 +44,8 @@ export function dueFor(
 	let dueMiles: number | null = null;
 
 	if (reminder.repeats) {
-		// Compared by calendar day, not instant — performed_at is date-only but baseline_at has a time.
-		const baselineDay = reminder.baseline_at ? reminder.baseline_at.slice(0, 10) : null;
-		const latest = latestOf(
-			records.filter((r) => r.category === reminder.category && (!baselineDay || r.performed_at >= baselineDay)),
-		);
-		// Falls back to the creation-time baseline when the category has never been serviced.
-		const anchorAt = latest?.performed_at ?? reminder.baseline_at;
-		const anchorOdometerMi = latest?.odometer_mi ?? reminder.baseline_odometer_mi;
+		const anchorAt = reminder.baseline_at;
+		const anchorOdometerMi = reminder.baseline_odometer_mi;
 
 		if (anchorOdometerMi != null && reminder.interval_miles != null) {
 			dueMiles = anchorOdometerMi + reminder.interval_miles;
@@ -92,4 +85,15 @@ export function dueFor(
 		);
 	}
 	return { status, dueLines: parts, urgency };
+}
+
+export function scheduleText(reminder: VehicleMaintenanceReminder): string {
+	if (!reminder.repeats) return "one-time";
+	const parts: string[] = [];
+	if (reminder.interval_miles != null) parts.push(`every ${reminder.interval_miles.toLocaleString()} mi`);
+	if (reminder.interval_unit != null && reminder.interval_count != null) {
+		const unit = reminder.interval_count === 1 ? reminder.interval_unit.slice(0, -1) : reminder.interval_unit;
+		parts.push(`every ${reminder.interval_count} ${unit}`);
+	}
+	return parts.join(" or ") || "repeating";
 }

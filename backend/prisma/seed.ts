@@ -6140,7 +6140,7 @@ async function main() {
 
 	// ============================================================================
 	// Vehicle Maintenance Reminders — mix of one-time (explicit due_at) and
-	// repeating (derived from the matching record above + interval) so the
+	// repeating (anchored on the matching record above + interval) so the
 	// overdue/due-soon/upcoming classification and the due-reminder notification
 	// feature both have real data to exercise. Truck 4 is the unassigned spare
 	// (no current_technician) — its reminders should still surface to
@@ -6149,7 +6149,7 @@ async function main() {
 
 	await db.vehicle_maintenance_reminder.createMany({
 		data: [
-			// Van 12 — overdue, upcoming (repeating off the oil_change record above), due-soon.
+			// Van 12 — overdue, upcoming (repeating, baseline = the oil_change record above), due-soon.
 			{
 				organization_id: org.id,
 				vehicle_id: van12.id,
@@ -6167,6 +6167,8 @@ async function main() {
 				interval_miles: 5000,
 				interval_unit: "months",
 				interval_count: 6,
+				baseline_at: daysFromNow(-38),
+				baseline_odometer_mi: 39200,
 			},
 			{
 				organization_id: org.id,

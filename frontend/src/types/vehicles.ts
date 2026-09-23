@@ -116,6 +116,7 @@ export interface VehicleMaintenanceAlert {
 	dueAt: string | null;
 	dueOdometerMi: number | null;
 	currentOdometerMi: number | null;
+	acknowledged: boolean;
 }
 
 export interface VehicleUsageTodayItem {
@@ -361,6 +362,7 @@ export interface BulkRestockResult {
 
 export type MaintenanceCategory =
 	| "oil_change"
+	| "fluids"
 	| "tire"
 	| "brake"
 	| "inspection"
@@ -369,7 +371,8 @@ export type MaintenanceCategory =
 	| "other";
 
 export const MAINTENANCE_CATEGORY_LABELS: Record<MaintenanceCategory, string> = {
-	oil_change:   "Oil & fluids",
+	oil_change:   "Oil change",
+	fluids:       "Fluids",
 	tire:         "Tire",
 	brake:        "Brake",
 	inspection:   "Inspection",
@@ -401,7 +404,7 @@ export interface VehicleMaintenanceRecord {
 }
 
 export const CreateMaintenanceRecordSchema = z.object({
-	category: z.enum(["oil_change", "tire", "brake", "inspection", "registration", "repair", "other"]),
+	category: z.enum(["oil_change", "fluids", "tire", "brake", "inspection", "registration", "repair", "other"]),
 	performed_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "performed_at must be YYYY-MM-DD"),
 	odometer_mi: z.number().int().min(0).optional().nullable(),
 	interval_miles: z.number().int().min(0).optional().nullable(),
@@ -411,8 +414,9 @@ export const CreateMaintenanceRecordSchema = z.object({
 	notes: z.string().optional().nullable(),
 	source_purchase_line_id: z.string().optional().nullable(),
 	source_field_purchase_line_id: z.string().optional().nullable(),
+	reminder_ids: z.array(z.string()).optional(),
 });
-export const UpdateMaintenanceRecordSchema = CreateMaintenanceRecordSchema.partial();
+export const UpdateMaintenanceRecordSchema = CreateMaintenanceRecordSchema.omit({ reminder_ids: true }).partial();
 
 export type CreateMaintenanceRecordInput = z.infer<typeof CreateMaintenanceRecordSchema>;
 export type UpdateMaintenanceRecordInput = Partial<CreateMaintenanceRecordInput>;
@@ -441,7 +445,7 @@ export interface VehicleMaintenanceReminder {
 export type IntervalUnit = "days" | "weeks" | "months" | "years";
 
 export const CreateMaintenanceReminderSchema = z.object({
-	category: z.enum(["oil_change", "tire", "brake", "inspection", "registration", "repair", "other"]),
+	category: z.enum(["oil_change", "fluids", "tire", "brake", "inspection", "registration", "repair", "other"]),
 	title: z.string().min(1),
 	description: z.string().optional().nullable(),
 	interval_miles: z.number().int().min(0).optional().nullable(),

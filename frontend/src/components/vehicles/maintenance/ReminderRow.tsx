@@ -1,8 +1,8 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { useDeleteMaintenanceReminderMutation, useAcknowledgeMaintenanceReminderMutation, useUnacknowledgeMaintenanceReminderMutation } from "../../../hooks/useVehicles";
+import { useDeleteMaintenanceReminderMutation, useAcknowledgeMaintenanceReminderMutation, useUnacknowledgeMaintenanceReminderMutation, useCompleteMaintenanceReminderMutation } from "../../../hooks/useVehicles";
 import { MAINTENANCE_CATEGORY_LABELS, type VehicleMaintenanceReminder } from "../../../types/vehicles";
-import { STATUS_LABEL, STATUS_CLASSNAME, type ReminderDue } from "../../../util/vehicleMaintenanceStatus";
+import { STATUS_LABEL, STATUS_CLASSNAME, scheduleText, type ReminderDue } from "../../../util/vehicleMaintenanceStatus";
 import { usePermission } from "../../../hooks/usePermission";
 import { useToast } from "../../ui/useToast";
 import ConfirmDialog from "../../ui/ConfirmDialog";
@@ -26,6 +26,7 @@ export default function ReminderRow({
     const { mutateAsync: deleteReminder, isPending: isDeleting } = useDeleteMaintenanceReminderMutation();
     const { mutateAsync: acknowledgeReminder, isPending: isAcknowledging } = useAcknowledgeMaintenanceReminderMutation();
     const { mutateAsync: unacknowledgeReminder, isPending: isUnacknowledging } = useUnacknowledgeMaintenanceReminderMutation();
+    const { mutateAsync: completeReminder, isPending: isCompleting } = useCompleteMaintenanceReminderMutation();
     const toast = useToast();
     const [confirmingDelete, setConfirmingDelete] = useState(false);
     const isAcknowledged = reminder.acknowledged_at != null;
@@ -57,12 +58,14 @@ export default function ReminderRow({
         }
     };
 
-    const scheduleParts: string[] = [];
-    if (reminder.interval_miles != null) scheduleParts.push(`every ${reminder.interval_miles.toLocaleString()} mi`);
-    if (reminder.interval_unit != null && reminder.interval_count != null) {
-        scheduleParts.push(`every ${reminder.interval_count} ${reminder.interval_unit}`);
-    }
-    const scheduleText = reminder.repeats ? (scheduleParts.join(" or ") || "repeating") : "one-time";
+    const handleComplete = async () => {
+        try {
+            await completeReminder({ vehicleId, reminderId: reminder.id });
+            toast.success("Reminder marked done.");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to mark reminder done.");
+        }
+    };
 
     return (
         <>
@@ -90,7 +93,7 @@ export default function ReminderRow({
                 </button>
             </div>
             <p className="pl-9 text-xs text-text-muted truncate">
-                {MAINTENANCE_CATEGORY_LABELS[reminder.category]} · {scheduleText}
+                {MAINTENANCE_CATEGORY_LABELS[reminder.category]} · {scheduleText(reminder)}
             </p>
             <div className="flex flex-col gap-1 pl-9">
                 <div className="flex items-center justify-between gap-2">
@@ -117,6 +120,15 @@ export default function ReminderRow({
                         >
                             Log service
                         </button>
+                        {!reminder.repeats && (
+                            <button
+                                className="text-xs font-semibold text-primary-text hover:underline disabled:opacity-60 hover:cursor-pointer"
+                                disabled={isCompleting}
+                                onClick={handleComplete}
+                            >
+                                Mark done
+                            </button>
+                        )}
                         <button
                             className="text-xs font-semibold text-primary-text hover:underline disabled:opacity-60 hover:cursor-pointer"
                             disabled={isUnacknowledging}

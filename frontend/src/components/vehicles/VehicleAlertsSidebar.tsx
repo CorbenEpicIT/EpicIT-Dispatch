@@ -45,8 +45,9 @@ export default function VehicleAlertsSidebar() {
 	);
 	const stockTotal = conflicts.length;
 
-	const overdueCount = alerts.filter((a) => a.status === "overdue").length;
-	const maintenanceTotal = alerts.length;
+	const openAlerts = alerts.filter((a) => !a.acknowledged);
+	const overdueCount = openAlerts.filter((a) => a.status === "overdue").length;
+	const maintenanceTotal = openAlerts.length;
 
 	const combinedTotal = stockTotal + maintenanceTotal;
 	const hasError = outCount > 0 || overdueCount > 0;
@@ -106,7 +107,7 @@ export default function VehicleAlertsSidebar() {
 									/>
 								))
 							)
-						) : maintenanceTotal === 0 ? (
+						) : alerts.length === 0 ? (
 							<EmptyState label="Nothing due" hint="No overdue or upcoming reminders" />
 						) : (
 							alerts.map((alert) => (
@@ -222,13 +223,16 @@ function AlertCard({ alert, onClick }: { alert: VehicleMaintenanceAlert; onClick
 	return (
 		<button
 			onClick={onClick}
-			className="w-full text-left bg-surface rounded-lg overflow-hidden border border-border hover:cursor-pointer hover:border-border-strong active:bg-surface-active transition-colors duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-500/50"
+			className={`w-full text-left bg-surface rounded-lg overflow-hidden border border-border hover:cursor-pointer ${alert.acknowledged ? "opacity-60" : ""} hover:border-border-strong active:bg-surface-active transition-colors duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-500/50`}
 		>
 			<div className={`px-3 py-1.5 flex items-center gap-1.5 ${isOverdue ? "bg-error/15" : "bg-warning/10"}`}>
 				<Wrench size={11} className={isOverdue ? "text-error-text" : "text-warning-text"} />
 				<span className={`text-[10px] font-bold tracking-wide ${isOverdue ? "text-error-text" : "text-warning-text"}`}>
 					{isOverdue ? "OVERDUE" : "DUE SOON"}
 				</span>
+				{alert.acknowledged && (
+					<span className="ml-auto text-[10px] italic text-text-faint">Acknowledged</span>
+				)}
 			</div>
 			<div className="px-3 py-2 flex flex-col gap-0.5">
 				<div className="text-xs font-semibold text-text-primary leading-snug truncate">{alert.title}</div>

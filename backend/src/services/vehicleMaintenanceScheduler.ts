@@ -1,6 +1,6 @@
 import * as notificationsController from "../controllers/notificationsController.js";
 import { db } from "../db.js";
-import { classifyReminder, currentOdometerFor, type MaintenanceReminderStatus } from "../lib/validate/vehicleMaintenanceStatus.js";
+import { classifyReminder, type MaintenanceReminderStatus } from "../lib/validate/vehicleMaintenanceStatus.js";
 import { log } from "./appLogger.js";
 
 let running = false;
@@ -24,20 +24,9 @@ export function startMaintenanceReminderInterval(): void {
 
             if (openReminders.length === 0) return;
 
-            const records = await db.vehicle_maintenance_record.findMany({
-                where: { vehicle_id: { in: [...new Set(openReminders.map(r => r.vehicle_id))] } }
-            });
-
-            const recordsByVehicle = records.reduce((map, r) => {
-                (map.get(r.vehicle_id) ?? map.set(r.vehicle_id, []).get(r.vehicle_id)!).push(r);
-                return map;
-            }, new Map<string, typeof records>());
-
             const dueReminders: { reminder: typeof openReminders[number]; status: MaintenanceReminderStatus }[] = [];
             for (const reminder of openReminders) {
-                const recordByVehicle = recordsByVehicle.get(reminder.vehicle_id) ?? [];
-                const odometer = currentOdometerFor(recordByVehicle);
-                const status = classifyReminder(reminder, recordByVehicle, odometer);
+                const status = classifyReminder(reminder, reminder.vehicle.current_odometer_mi);
                 if (status === "overdue" || status === "duesoon") {
                     dueReminders.push({ reminder, status });
                 }

@@ -1,10 +1,10 @@
 import {z} from "zod"
 
 const maintenanceCategoryEnum = z.enum([
-  "oil_change", "tire", "brake", "inspection", "registration", "repair", "other",
+  "oil_change", "fluids", "tire", "brake", "inspection", "registration", "repair", "other",
 ]);
 
-export const createMaintenanceRecordSchema = z.object({
+const maintenanceRecordFields = z.object({
   category: maintenanceCategoryEnum,
   performed_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "performed_at must be YYYY-MM-DD"),
   odometer_mi: z.number().int().min(0).optional().nullable(),
@@ -17,7 +17,11 @@ export const createMaintenanceRecordSchema = z.object({
   source_field_purchase_line_id: z.string().optional().nullable(),
 });
 
-export const updateMaintenanceRecordSchema = createMaintenanceRecordSchema.partial();
+export const createMaintenanceRecordSchema = maintenanceRecordFields.extend({
+  reminder_ids: z.array(z.string().uuid()).optional(),
+});
+
+export const updateMaintenanceRecordSchema = maintenanceRecordFields.partial();
 
 const intervalUnitEnum = z.enum(["days", "weeks", "months", "years"]);
 

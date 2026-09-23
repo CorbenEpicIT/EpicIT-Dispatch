@@ -1582,6 +1582,7 @@ model inventory_tag {
 
 enum vehicle_maintenance_category {
   oil_change
+  fluids
   tire
   brake
   inspection
@@ -1832,7 +1833,7 @@ model vehicle_maintenance_reminder {
   // dispatcher has seen it and muted its urgency — does not affect the due calc
   acknowledged_at DateTime?
 
-  // repeating only: creation-time anchor, used until a matching-category record exists
+  // repeating only: due-calc anchor — set at creation, moved when a record covers this reminder
   baseline_at          DateTime?
   baseline_odometer_mi Int?
 

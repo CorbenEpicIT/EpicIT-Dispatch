@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Droplet, Disc, Octagon, CircleCheck, FileText, Wrench, MoreHorizontal, Receipt, X, type LucideIcon } from "lucide-react";
+import { Receipt, X } from "lucide-react";
+import { CATEGORY_TILES, TINT_CLASSES } from "./categoryTiles";
 import { FormWizardContainer } from "../../ui/forms/FormWizardContainer";
 import FilterableSelect, { type FilterableOption } from "../../ui/forms/FilterableSelect";
 import { useUpdateMaintenanceRecordMutation, useMaintenanceSourceLinesQuery } from "../../../hooks/useVehicles";
@@ -25,32 +26,6 @@ const LABEL = "block mb-0.5 text-xs font-medium text-text-tertiary uppercase tra
 
 const CREATE_SUPPLIER_OPTION_ID = "__create_supplier__";
 const CREATE_PURCHASE_OPTION_ID = "__create_purchase__";
-
-interface CategoryTile {
-    value: MaintenanceCategory;
-    icon: LucideIcon;
-    tint: "warning" | "primary" | "error" | "success" | "reviewing" | "info" | "neutral";
-}
-
-const CATEGORY_TILES: CategoryTile[] = [
-    { value: "oil_change", icon: Droplet, tint: "warning" },
-    { value: "tire", icon: Disc, tint: "primary" },
-    { value: "brake", icon: Octagon, tint: "error" },
-    { value: "inspection", icon: CircleCheck, tint: "success" },
-    { value: "registration", icon: FileText, tint: "reviewing" },
-    { value: "repair", icon: Wrench, tint: "info" },
-    { value: "other", icon: MoreHorizontal, tint: "neutral" },
-];
-
-const TINT_CLASSES: Record<CategoryTile["tint"], { icon: string; selected: string }> = {
-    warning: { icon: "bg-warning/15 text-warning-text", selected: "border-warning bg-warning/10 text-warning-text" },
-    primary: { icon: "bg-primary-bg text-primary", selected: "border-primary bg-primary/10 text-primary" },
-    error: { icon: "bg-error/15 text-error-text", selected: "border-error bg-error/10 text-error-text" },
-    success: { icon: "bg-success/15 text-success-text", selected: "border-success bg-success/10 text-success-text" },
-    reviewing: { icon: "bg-reviewing-bg text-reviewing-text", selected: "border-reviewing bg-reviewing-bg text-reviewing-text" },
-    info: { icon: "bg-info-bg text-info-text", selected: "border-info bg-info-bg text-info-text" },
-    neutral: { icon: "bg-surface-raised text-text-muted", selected: "border-border-strong bg-surface-raised text-text-secondary" },
-};
 
 // 300ms debounce so search doesn't fire per keystroke.
 function useDebouncedValue<T>(value: T, delayMs = 300): T {
@@ -212,7 +187,7 @@ export default function UpdateMaintenanceRecordModal ({
     const formContent = useMemo(() => (
         <div className="space-y-4" >
             <label className={LABEL}>Category</label>
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
                 {CATEGORY_TILES.map((t) => {
                     const Icon = t.icon;
                     const isSelected = category === t.value;
