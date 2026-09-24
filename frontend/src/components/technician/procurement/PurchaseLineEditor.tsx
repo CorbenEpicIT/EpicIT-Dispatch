@@ -11,6 +11,8 @@ import {
 	type LineDraft,
 } from "./lineDrafts";
 import LineStockDisclosure from "./LineStockDisclosure";
+import RefundPartPicker, { RefundLineStock } from "./RefundPartPicker";
+import { sheetCopy } from "./sheetCopy";
 
 /** A job the receipt covers, as the line editor needs to name it. */
 export interface LineJobOption {
@@ -70,6 +72,9 @@ export default function PurchaseLineEditor({
 	totalPaid = 0,
 	taxAmount = 0,
 }: Props) {
+	const copy = sheetCopy(purchase.kind);
+	// Null off a refund, so every refund-only branch below keys off this.
+	const parentLines = purchase.kind === "refund" ? (purchase.parent?.lines ?? []) : null;
 	const isSplit = jobs.length > 1;
 	const linesTotal = lines.reduce(
 		(n, d) => n + (Number(d.quantity) || 0) * (Number(d.unit_price) || 0),
@@ -134,7 +139,7 @@ export default function PurchaseLineEditor({
 		<section className="rounded-xl border border-border bg-base p-4">
 			<div className="mb-3 flex items-baseline justify-between">
 				<h2 className="text-sm font-semibold text-text-primary">
-					What you bought
+					{copy.linesTitle}
 				</h2>
 				<span className="text-xs tabular-nums text-text-muted">
 					{lines.length} line{lines.length === 1 ? "" : "s"} ·{" "}
@@ -150,13 +155,13 @@ export default function PurchaseLineEditor({
 				<button
 					type="button"
 					onClick={seedExtracted}
-					className="mb-3 flex w-full items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-left text-xs text-warning-text hover:bg-warning/15"
+					className="mb-3 flex w-full items-center gap-2 rounded-lg border border-warning-border bg-warning-bg px-3 py-2.5 text-left text-xs text-warning-text transition-colors duration-150 ease-out hover:border-warning"
 				>
 					<ScanLine aria-hidden size={14} className="flex-shrink-0" />
 					<span className="min-w-0 flex-1">
 						{pending.length} line
-						{pending.length === 1 ? "" : "s"} read from the
-						receipt {pending.length === 1 ? "is" : "are"} not on
+						{pending.length === 1 ? "" : "s"} read from the{" "}
+						{copy.noun} {pending.length === 1 ? "is" : "are"} not on
 						this sheet — add{" "}
 						{pending.length === 1 ? "it" : "them"} to review
 					</span>
@@ -169,7 +174,7 @@ export default function PurchaseLineEditor({
 			<div role="status" aria-live="polite" className="sr-only">
 				{[
 					pending.length > 0
-						? `${pending.length} line${pending.length === 1 ? "" : "s"} read from the receipt ${pending.length === 1 ? "is" : "are"} not on this sheet yet.`
+						? `${pending.length} line${pending.length === 1 ? "" : "s"} read from the ${copy.noun} ${pending.length === 1 ? "is" : "are"} not on this sheet yet.`
 						: "",
 					lowConfidenceCount > 0
 						? `${lowConfidenceCount} line${lowConfidenceCount === 1 ? "" : "s"} read with low confidence — check ${lowConfidenceCount === 1 ? "it" : "them"} against the paper.`
@@ -178,6 +183,15 @@ export default function PurchaseLineEditor({
 					.filter(Boolean)
 					.join(" ")}
 			</div>
+
+			{editable && parentLines && (
+				<RefundPartPicker
+					parentLines={parentLines}
+					lines={lines}
+					allocationKey={jobs.length === 1 ? jobs[0]!.key : ""}
+					onChange={onChange}
+				/>
+			)}
 
 			<div ref={listRef} className="space-y-3">
 				{lines.map((d, i) => {
@@ -203,7 +217,7 @@ export default function PurchaseLineEditor({
 													.value,
 										})
 									}
-									placeholder="Part as it reads on the receipt"
+									placeholder={copy.linePlaceholder}
 									className="h-11 min-w-0 flex-1 rounded-md border border-border bg-base px-2 text-sm text-text-primary placeholder:text-text-muted disabled:opacity-60"
 								/>
 								{/* One counter item can genuinely serve two jobs, and the only
@@ -353,12 +367,19 @@ export default function PurchaseLineEditor({
 								</label>
 							)}
 
-							<LineStockDisclosure
-								draft={d}
-								editable={editable}
-								myVehicle={myVehicle}
-								onChange={(patch) => edit(i, patch)}
-							/>
+							{parentLines ? (
+								<RefundLineStock
+									draft={d}
+									parentLines={parentLines}
+								/>
+							) : (
+								<LineStockDisclosure
+									draft={d}
+									editable={editable}
+									myVehicle={myVehicle}
+									onChange={(patch) => edit(i, patch)}
+								/>
+							)}
 
 							{lowConfidence && !d.acknowledged && (
 								<p className="mt-2 inline-flex items-center gap-1 text-xs text-warning-text">
@@ -388,8 +409,8 @@ export default function PurchaseLineEditor({
 										}
 										className="h-5 w-5 accent-primary"
 									/>
-									This line matches the
-									receipt
+									This line matches the{" "}
+									{copy.noun}
 								</label>
 							)}
 							{!editable && d.acknowledged && (
@@ -438,7 +459,9 @@ export default function PurchaseLineEditor({
 				<p className="mt-2 text-xs text-warning-text">
 					{unassigned} line
 					{unassigned === 1 ? " still needs" : "s still need"} a job —
-					nothing is billed for a line nobody claimed.
+					{parentLines
+						? " nothing is credited for a line nobody claimed."
+						: " nothing is billed for a line nobody claimed."}
 				</p>
 			)}
 
@@ -446,7 +469,7 @@ export default function PurchaseLineEditor({
 				// One string rather than interpolated fragments: it is a plain
 				// sentence, and split across nodes it is read out in pieces.
 				<p className="mt-2 text-xs text-warning-text">
-					{`These lines plus tax do not add up to the ${money(paid)} paid — ${money(
+					{`These lines plus tax do not add up to the ${money(paid)} ${copy.reconcileVerb} — ${money(
 						Math.abs(shortfall)
 					)} ${shortfall > 0 ? "is missing" : "is unaccounted for"}.`}
 				</p>

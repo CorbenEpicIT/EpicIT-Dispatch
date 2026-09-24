@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
 	AlertTriangle,
+	CalendarOff,
+	ChevronRight,
+	Flag,
+	Loader2,
+	MessageSquare,
 	RefreshCw,
 	Send,
 	ShieldQuestion,
@@ -27,19 +32,29 @@ import PurchaseLineEditor from "../../components/technician/procurement/Purchase
 import ReceiptValueDiff from "../../components/technician/procurement/ReceiptValueDiff";
 import LimitBreachNotice from "../../components/technician/procurement/LimitBreachNotice";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import SheetNotice from "../../components/technician/procurement/SheetNotice";
 import {
 	clampDestinations,
 	toDrafts,
 	type LineDraft,
 } from "../../components/technician/procurement/lineDrafts";
 import { useToast } from "../../components/ui/useToast";
-import { money } from "../../components/fieldPurchases/fieldPurchaseFormat";
+import { FOCUS_RING, money } from "../../components/fieldPurchases/fieldPurchaseFormat";
+import { partsSummary, refundLedger } from "../../components/technician/procurement/refundParts";
 import { errorMessage } from "../../util/util";
 import TechPage from "../../components/technician/TechPage";
 import {
-	FIELD_PURCHASE_STATUS_LABELS,
+	pendingRefundsLine,
+	refundStateLabel,
+	refundStateTone,
+	sheetCopy,
+	sheetTitle,
+} from "../../components/technician/procurement/sheetCopy";
+import {
 	isTechEditable,
 	type FieldPurchase,
+	type FieldPurchaseRefundParent,
+	type FieldPurchaseRefundSummary,
 } from "../../types/fieldPurchases";
 
 /**
@@ -52,7 +67,14 @@ interface AllocDraft {
 	job_id: string;
 	job_visit_id: string | null;
 	label: string;
+	/** The visit the row opens, said the way the visits list says it. */
+	visit_name: string | null;
+	visit_start: string | null;
 }
+
+/** A job by name, else by number — never by its id, which means nothing to anybody. */
+const jobLabel = (name: string | null | undefined, number: string | null | undefined) =>
+	name || (number ? `Job ${number}` : "Job");
 
 /**
  * Where every exit from this screen leads. Deliberately one place: this sheet is
@@ -177,6 +199,9 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 	// whatever they were typing.
 	const [dirty, setDirty] = useState(false);
 	const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+	// Where a tap on a job row was headed, held while the technician decides
+	// whether to walk away from edits this sheet has not sent.
+	const [leavingTo, setLeavingTo] = useState<string | null>(null);
 
 	// What the receipt read, which the purchase may well not hold: extraction stands
 	// down from every field the technician filled and from the lines entirely once
@@ -206,7 +231,9 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 				key: a.id,
 				job_id: a.job_id,
 				job_visit_id: a.job_visit_id,
-				label: a.job?.name || a.job_id,
+				label: jobLabel(a.job?.name, a.job?.job_number),
+				visit_name: a.job_visit?.name ?? null,
+				visit_start: a.job_visit?.scheduled_start_at ?? null,
 			}))
 		);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -240,6 +267,15 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 	// the vehicle page to a visit they had never been on.
 	const billsAVisit = purchase.allocations.some((a) => a.job_visit_id);
 	const canRefund = purchase.kind === "purchase" && purchase.status === "approved";
+	const isRefund = purchase.kind === "refund";
+	// Only a queried or rejected purchase leaves the technician something to do
+	// about dispatch's note; on any other it is a remark.
+	const dispatchAsks = purchase.status === "queried" || purchase.status === "rejected";
+	// `refund_unsettled` is written for the reviewer and says what the title
+	// already says ("Credit on its way") in dispatcher's words.
+	const shownFlags = purchase.flags.filter((f) => f.code !== "refund_unsettled");
+	const copy = sheetCopy(purchase.kind);
+	const refundParent = isRefund ? (purchase.parent ?? null) : null;
 
 	// Asked of the server against the real total, which is only known once the
 	// receipt is in hand. A breach turns the submit into a pre-approval request
@@ -333,9 +369,11 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 				quantity: Number(d.quantity),
 				unit_price: Number(d.unit_price),
 				inventory_item_id: d.inventory_item_id || null,
-				disposition: d.disposition || null,
+				// A refund's stock leaves wherever its purchase put it, so a
+				// disposition here would be a claim nothing reads.
+				disposition: isRefund ? null : d.disposition || null,
 				disposition_vehicle_id:
-					d.disposition === "receive" && d.disposition_vehicle_id
+					!isRefund && d.disposition === "receive" && d.disposition_vehicle_id
 						? d.disposition_vehicle_id
 						: null,
 				// `allocationKey` is the sheet's own handle on a roster row and means
@@ -347,7 +385,7 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 				sort_order: i,
 			})),
 		}),
-		[vendor, totalNum, tax, purchasedAt, lines, allocs, jobOfKey]
+		[vendor, totalNum, tax, purchasedAt, lines, allocs, jobOfKey, isRefund]
 	);
 
 	// `Number("")` is 0 and `Number("abc")` is NaN, so neither a blank nor a
@@ -366,12 +404,24 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 	// Why the submit is dead, said in the button rather than under it: a line of
 	// its own cost 24px of a 390x844 screen at all times, and a technician staring
 	// at a disabled button is asking exactly this question.
+	// Measured the way the server measures it — the larger of the total and the
+	// lines plus tax — so the button never offers a submit the server refuses.
+	const refundClaim = Math.max(
+		totalNum,
+		lines.reduce((n, d) => n + (Number(d.quantity) || 0) * (Number(d.unit_price) || 0), 0) +
+			(Number(tax) || 0)
+	);
+	const refundRemaining = refundParent ? Number(refundParent.remaining) : null;
+	const overRefund = refundRemaining != null && refundClaim > refundRemaining + 0.005;
+
 	const blockedReason = !incomplete
-		? null
+		? overRefund
+			? `More than the ${money(refundRemaining ?? 0)} left to refund`
+			: null
 		: !purchase.receipt_image_url
-			? "Photograph the receipt first"
+			? copy.blockedNoPhoto
 			: lines.length === 0
-				? "Add what you bought first"
+				? copy.blockedNoLines
 				: unconfirmed > 0
 					? `Check ${unconfirmed} line${unconfirmed === 1 ? "" : "s"} against the paper`
 					: unassigned > 0
@@ -405,7 +455,9 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 				key: `new-${id}`,
 				job_id: id,
 				job_visit_id: job.visit_id ?? null,
-				label: job.job_name || `Job ${job.job_number ?? ""}`.trim(),
+				label: jobLabel(job.job_name, job.job_number),
+				visit_name: job.visit_name,
+				visit_start: job.scheduled_start_at,
 			},
 		]);
 	}
@@ -432,7 +484,7 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 			await remove.mutateAsync(purchase.id);
 			navigate(PURCHASES);
 		} catch (err) {
-			toast.error(errorMessage(err, "Could not discard the draft"));
+			toast.error(errorMessage(err, copy.discardFailed));
 		}
 	}
 
@@ -443,7 +495,7 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 			toast.success(
 				result.flags.length > 0
 					? `Submitted with ${result.flags.length} note${result.flags.length === 1 ? "" : "s"} for dispatch`
-					: "Submitted for review"
+					: copy.submitted
 			);
 			navigate(PURCHASES);
 		} catch (err) {
@@ -484,6 +536,13 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 	}
 
 	async function startRefund() {
+		// The server would hand the same draft back, but there is no reason to
+		// ask when the answer is already on screen.
+		const openDraft = purchase.refund_summary?.draft_id;
+		if (openDraft) {
+			navigate(`/technician/purchases/${openDraft}`);
+			return;
+		}
 		try {
 			const created = await refund.mutateAsync({ parentPurchaseId: purchase.id });
 			navigate(`/technician/purchases/${created.id}`);
@@ -506,20 +565,11 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 			<header className="sticky top-0 z-10 -mx-4 flex items-center gap-2 border-b border-border bg-canvas px-4 py-2.5">
 				<div className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
 					<h1 className="min-w-0 truncate text-base font-semibold text-text-primary">
-						{purchase.status === "draft" ? (
-							purchase.kind === "refund" ? (
-								"New refund"
-							) : (
-								"New field purchase"
-							)
-						) : (
-							<>
-								{purchase.kind === "refund" ? "Refund · " : ""}
-								{FIELD_PURCHASE_STATUS_LABELS[purchase.status]}
-							</>
-						)}
+						{sheetTitle(purchase)}
 					</h1>
 					<span className="flex-shrink-0 text-base font-semibold tabular-nums text-text-primary">
+						{/* Money coming back, so it reads as coming back. */}
+						{isRefund ? "−" : ""}
 						{money(awaitingPurchase ? estimateNum : totalNum)}
 					</span>
 				</div>
@@ -528,7 +578,7 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 					// rather than growing the one bar that is always on screen.
 					<button
 						type="button"
-						aria-label="Discard this draft"
+						aria-label={copy.discardLabel}
 						onClick={() => setConfirmingDiscard(true)}
 						className="-my-2.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-md text-text-muted transition-colors duration-150 hover:bg-surface hover:text-error-text"
 					>
@@ -545,69 +595,71 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 			<div className="relative z-[60]">
 				<ConfirmDialog
 					open={confirmingDiscard}
-					title="Discard this draft?"
-					body="The photo and every line on it go with it. There is no undo."
+					title={copy.discardTitle}
+					body={copy.discardBody}
 					confirmLabel="Discard"
 					tone="destructive"
 					pending={remove.isPending}
 					onConfirm={() => void onDiscard()}
 					onCancel={() => setConfirmingDiscard(false)}
 				/>
+				<ConfirmDialog
+					open={leavingTo != null}
+					title="Leave without sending?"
+					body="What you've changed here isn't saved yet."
+					confirmLabel="Leave"
+					onConfirm={() => leavingTo && navigate(leavingTo)}
+					onCancel={() => setLeavingTo(null)}
+				/>
 			</div>
 
-			{(canRefund || purchase.review_note || purchase.preauth_note) && (
-				<div>
-					{/* A return is its own purchase pointing back at this one: same receipt
-				    (the credit slip), same lines, same review. */}
-					{canRefund && (
-						<button
-							type="button"
-							disabled={refund.isPending}
-							onClick={() => void startRefund()}
-							className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-xs font-medium text-text-secondary hover:bg-surface-raised disabled:opacity-40"
-						>
-							<Undo2 aria-hidden size={13} /> Returned a
-							part
-						</button>
-					)}
+			{refundParent && <RefundOf parent={refundParent} editable={editable} />}
+
+			{(purchase.review_note || purchase.preauth_note) && (
+				<div className="space-y-2">
 					{purchase.review_note && (
-						<p className="mt-1 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
-							Dispatch: {purchase.review_note}
-						</p>
+						<SheetNotice
+							tone={dispatchAsks ? "warning" : "neutral"}
+							icon={dispatchAsks ? AlertTriangle : MessageSquare}
+							title={
+								purchase.status === "queried"
+									? "Dispatch asked for a change"
+									: purchase.status === "rejected"
+										? "Dispatch turned this down"
+										: "Note from dispatch"
+							}
+						>
+							{purchase.review_note}
+						</SheetNotice>
 					)}
 					{purchase.preauth_note && (
-						<p
-							className={`mt-1 text-xs ${
+						<SheetNotice
+							tone={purchase.status === "preauth_denied" ? "warning" : "neutral"}
+							icon={ShieldQuestion}
+							title={
 								purchase.status === "preauth_denied"
-									? "rounded-md border border-warning/40 bg-warning/10 p-2 text-warning"
-									: "text-text-muted"
-							}`}
+									? "Dispatch said no"
+									: "Pre-approval note"
+							}
 						>
-							{purchase.status === "preauth_denied"
-								? "Dispatch said no: "
-								: "Pre-approval note: "}
 							{purchase.preauth_note}
-						</p>
+						</SheetNotice>
 					)}
 				</div>
 			)}
 
-			{purchase.flags.length > 0 && (
-				<ul className="space-y-1 rounded-xl border border-warning/40 bg-warning/10 p-3">
-					{purchase.flags.map((f, i) => (
-						<li
-							key={`${f.code}-${i}`}
-							className="flex items-start gap-1.5 text-xs text-warning"
-						>
-							<AlertTriangle
-								aria-hidden
-								size={12}
-								className="mt-0.5 flex-shrink-0"
-							/>
-							{f.message}
-						</li>
-					))}
-				</ul>
+			{purchase.refund_summary && <RefundsOnPurchase summary={purchase.refund_summary} paid={totalNum} />}
+
+			{shownFlags.length > 0 && (
+				// Advisory: flags route a reviewer's attention and never block, so
+				// they read as information rather than as something owed.
+				<SheetNotice tone="info" icon={Flag} title="Dispatch will check">
+					<ul className="space-y-0.5">
+						{shownFlags.map((f, i) => (
+							<li key={`${f.code}-${i}`}>{f.message}</li>
+						))}
+					</ul>
+				</SheetNotice>
 			)}
 
 			{awaitingPurchase ? (
@@ -666,7 +718,7 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 
 					<section className="rounded-xl border border-border bg-base p-4">
 						<h2 className="mb-3 text-sm font-semibold text-text-primary">
-							Receipt details
+							{copy.detailsTitle}
 						</h2>
 						{/* Label and diff are siblings, not both inside the <label>:
 						    a <label> may hold only the one control it names, and a
@@ -675,7 +727,7 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 						<div>
 							<div className="mb-1 flex flex-wrap items-center gap-x-1.5 text-xs text-text-muted">
 								<label htmlFor="fp-vendor">
-									Vendor
+									{isRefund ? "Returned to" : "Vendor"}
 								</label>
 								<ReceiptValueDiff
 									label="Vendor"
@@ -687,7 +739,7 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 									confidence={scoreOf(
 										"vendor_name"
 									)}
-									editable={editable}
+									editable={editable && !isRefund}
 									controlId="fp-vendor"
 									onUse={touch(setVendor)}
 								/>
@@ -695,7 +747,9 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 							<input
 								id="fp-vendor"
 								value={vendor}
-								disabled={!editable}
+								// The store the part went back to is the store it came
+								// from; the refund copies it from the purchase.
+								disabled={!editable || isRefund}
 								onChange={(e) =>
 									touch(setVendor)(
 										e.target.value
@@ -709,7 +763,7 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 							<div className="flex-1">
 								<div className="mb-1 flex flex-wrap items-center gap-x-1.5 text-xs text-text-muted">
 									<label htmlFor="fp-total">
-										Total paid
+										{copy.totalLabel}
 									</label>
 									<ReceiptValueDiff
 										label="total"
@@ -782,7 +836,7 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 						<div className="mt-3">
 							<div className="mb-1 flex flex-wrap items-center gap-x-1.5 text-xs text-text-muted">
 								<label htmlFor="fp-purchased-at">
-									When it was bought
+									{copy.dateLabel}
 								</label>
 								<ReceiptValueDiff
 									label="purchase time"
@@ -837,51 +891,123 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 			)}
 
 			<section className="rounded-xl border border-border bg-base p-4">
-				<h2 className="mb-2 text-sm font-semibold text-text-primary">
-					Jobs this covers
-				</h2>
-				<ul className="space-y-1">
-					{allocs.map((a) => (
-						<li
-							key={a.key}
-							className="flex items-center justify-between gap-2 text-sm text-text-secondary"
-						>
-							<span className="min-w-0 flex-1 truncate">
-								{a.label}
-							</span>
-							<span className="flex-shrink-0 tabular-nums">
-								{/* Read off the lines, never typed. A lone job carries the whole
-								    receipt, and before the receipt exists that is the estimate
-								    rather than the zero total. */}
-								{money(
-									isSplit
-										? (shareOfKey.get(
-												a.key
-											) ?? 0)
-										: awaitingPurchase
-											? estimateNum
-											: totalNum
+				<div className="mb-3 flex items-baseline justify-between gap-2">
+					<h2 className="text-sm font-semibold text-text-primary">
+						{copy.jobsTitle}
+					</h2>
+					{allocs.some((a) => a.job_visit_id) && (
+						<span className="text-xs text-text-muted">Tap to open the visit</span>
+					)}
+				</div>
+				<ul className="space-y-2">
+					{allocs.map((a) => {
+						// Read off the lines, never typed. A lone job carries the whole
+						// receipt, and before the receipt exists that is the estimate
+						// rather than the zero total.
+						const amount = isSplit
+							? (shareOfKey.get(a.key) ?? 0)
+							: awaitingPurchase
+								? estimateNum
+								: totalNum;
+						const to = a.job_visit_id
+							? `/technician/visits/${a.job_visit_id}`
+							: null;
+						const start = a.visit_start ? new Date(a.visit_start) : null;
+						const body = (
+							<>
+								{/* The visit's day as a calendar chip: the one fact a
+								    truncated subtitle kept cutting off at phone width. */}
+								{to && start ? (
+									<span className="flex h-10 w-10 flex-shrink-0 flex-col items-center justify-center rounded-md border border-border bg-base leading-none">
+										<span className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+											{start.toLocaleDateString(undefined, {
+												month: "short",
+											})}
+										</span>
+										<span className="mt-0.5 text-sm font-semibold tabular-nums text-text-primary">
+											{start.getDate()}
+										</span>
+									</span>
+								) : (
+									<span
+										aria-hidden
+										className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md text-text-faint"
+									>
+										<CalendarOff size={16} />
+									</span>
 								)}
-							</span>
-							{isSplit && editable && (
-								<button
-									type="button"
-									aria-label={`Remove ${a.label}`}
-									onClick={() =>
-										removeJob(a.key)
-									}
-									className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-md border border-border text-text-secondary hover:text-error-text"
-								>
-									<X aria-hidden size={14} />
-								</button>
-							)}
-						</li>
-					))}
+								<span className="min-w-0 flex-1">
+									<span className="line-clamp-2 text-sm font-medium text-text-primary">
+										{a.label}
+									</span>
+									<span className="block truncate text-xs text-text-muted">
+										{to
+											? (a.visit_name ?? "Visit")
+											: "No visit to open"}
+										{/* The chip is visual; say the date once for a reader. */}
+										{to && start && (
+											<span className="sr-only">
+												{`, ${start.toLocaleDateString()}`}
+											</span>
+										)}
+									</span>
+								</span>
+								<span className="flex-shrink-0 text-sm font-medium tabular-nums text-text-primary">
+									{isRefund ? "−" : ""}
+									{money(amount)}
+								</span>
+							</>
+						);
+						return (
+							<li key={a.key} className="flex items-stretch gap-2">
+								{to ? (
+									// The visit, not the job: a technician has no job
+									// page, and the visit keeps its history once it is
+									// in the past. A bordered tile with a chevron, so a
+									// lone job still reads as somewhere to go.
+									<Link
+										to={to}
+										onClick={(e) => {
+											if (!dirty) return;
+											e.preventDefault();
+											setLeavingTo(to);
+										}}
+										className={`group flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-lg border border-border bg-surface py-2 pl-2 pr-1.5 transition-colors duration-150 ease-out hover:border-border-strong hover:bg-surface-raised active:bg-surface-raised ${FOCUS_RING}`}
+									>
+										{body}
+										<ChevronRight
+											aria-hidden
+											size={16}
+											className="flex-shrink-0 text-text-muted transition-colors duration-150 ease-out group-hover:text-text-primary"
+										/>
+									</Link>
+								) : (
+									// Dashed and flat: the same shape, plainly not a button.
+									<div className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-lg border border-dashed border-border py-2 pl-2 pr-3">
+										{body}
+									</div>
+								)}
+								{/* A sibling of the tile, never inside it: two actions
+								    in one target is a tap that does the wrong one. */}
+								{isSplit && editable && (
+									<button
+										type="button"
+										aria-label={`Remove ${a.label}`}
+										onClick={() => removeJob(a.key)}
+										className={`flex w-11 flex-shrink-0 items-center justify-center rounded-lg border border-border text-text-secondary transition-colors duration-150 ease-out hover:border-error-border hover:text-error-text ${FOCUS_RING}`}
+									>
+										<X aria-hidden size={14} />
+									</button>
+								)}
+							</li>
+						);
+					})}
 				</ul>
 
 				{/* One counter trip can serve two call-outs. Adding the job here is what
 				    lets each line say which of them it was for. */}
-				{editable && addableJobs.length > 0 && (
+				{/* A refund credits the jobs its purchase charged, and no others. */}
+				{editable && !isRefund && addableJobs.length > 0 && (
 					<label className="mt-2 block">
 						<span className="mb-1 block text-xs text-text-muted">
 							Also bought for another job?
@@ -907,17 +1033,26 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 					</label>
 				)}
 				{unassigned > 0 && (
-					<p className="mt-2 text-xs text-warning">
+					<p className="mt-2 text-xs text-warning-text">
 						{unassigned} line{unassigned === 1 ? "" : "s"} do
 						not say which job they were for — tag them above
 						before you can submit.
 					</p>
 				)}
-				{!billsAVisit && (
+				{isRefund ? (
+					// Refunds never write to a visit — approval flags dispatch to
+					// adjust the invoice by hand.
 					<p className="mt-2 text-xs text-text-muted">
-						Not attached to a visit, so nothing is added to the
-						customer's bill — dispatch will handle the charge.
+						Dispatch takes this off the customer's bill.
 					</p>
+				) : (
+					!billsAVisit && (
+						<p className="mt-2 text-xs text-text-muted">
+							Not attached to a visit, so nothing is added to
+							the customer's bill — dispatch will handle the
+							charge.
+						</p>
+					)
 				)}
 			</section>
 
@@ -994,15 +1129,249 @@ function PurchaseSheet({ purchase }: { purchase: FieldPurchase }) {
 						<FooterButton
 							tone="primary"
 							icon={<Send aria-hidden size={16} />}
-							label="Submit for review"
+							label={copy.submitLabel}
 							blockedReason={blockedReason}
-							disabled={submit.isPending || incomplete}
+							disabled={submit.isPending || incomplete || overRefund}
 							onClick={() => void onSubmit()}
 						/>
 					)}
 				</div>
 			)}
+
+			{canRefund && (
+				// Same slot as the editable bar, which never shows alongside it —
+				// `approved` is not tech-editable — so the thumb finds this screen's
+				// one action where every other state of it keeps its own.
+				<div className="fixed inset-x-0 bottom-16 z-40 border-t border-border bg-base px-4 py-2.5">
+					<ReturnPartBar
+						summary={purchase.refund_summary ?? null}
+						pending={refund.isPending}
+						onClick={() => void startRefund()}
+					/>
+				</div>
+			)}
 		</TechPage>
+	);
+}
+
+/**
+ * What this refund is against, and how much of it is still refundable. Without it
+ * the sheet is a blank credit with a vendor name, and the ceiling is only
+ * discovered as a refusal at submit.
+ */
+function RefundOf({
+	parent,
+	editable,
+}: {
+	parent: FieldPurchaseRefundParent;
+	editable: boolean;
+}) {
+	return (
+		<Link
+			to={`/technician/purchases/${parent.id}`}
+			className={`group flex min-h-14 items-center gap-3 rounded-lg border border-border bg-surface py-2 pl-3 pr-1.5 transition-colors duration-150 ease-out hover:border-border-strong hover:bg-surface-raised ${FOCUS_RING}`}
+		>
+			<Undo2 aria-hidden size={16} className="flex-shrink-0 text-text-muted" />
+			<span className="min-w-0 flex-1">
+				<span className="block text-sm font-medium text-text-primary">
+					Original purchase
+				</span>
+				<span className="block truncate text-xs text-text-muted">
+					{[
+						parent.vendor_name,
+						parent.purchased_at &&
+							new Date(parent.purchased_at).toLocaleDateString(),
+					]
+						.filter(Boolean)
+						.join(" · ") || "Open the purchase"}
+				</span>
+				{/* The ceiling only matters while the amount can still change. */}
+				{editable && (
+					<span className="block truncate text-xs text-text-muted">
+						Up to {money(Number(parent.remaining))} can still be refunded
+					</span>
+				)}
+			</span>
+			{/* Its own column, centred on the tile as the job tiles are. */}
+			<span className="flex-shrink-0 text-sm font-medium tabular-nums text-text-primary">
+				{money(Number(parent.total))}
+			</span>
+			<ChevronRight
+				aria-hidden
+				size={16}
+				className="flex-shrink-0 text-text-muted transition-colors duration-150 ease-out group-hover:text-text-primary"
+			/>
+		</Link>
+	);
+}
+
+const TONE_CLASS = {
+	success: "text-success",
+	warning: "text-warning-text",
+	error: "text-error-text",
+	muted: "text-text-muted",
+} as const;
+
+/**
+ * Every refund raised against this purchase, and what the purchase has cost once
+ * they are counted. A list of amounts alone read every refund as money back —
+ * including the ones dispatch turned down.
+ */
+function RefundsOnPurchase({
+	summary,
+	paid,
+}: {
+	summary: FieldPurchaseRefundSummary;
+	paid: number;
+}) {
+	if (summary.refunds.length === 0) return null;
+	const ledger = refundLedger(paid, summary);
+	const rows: [string, number][] = [
+		["Credit received", ledger.received],
+		["Credit on its way", ledger.onItsWay],
+		["With dispatch", ledger.withDispatch],
+	];
+	return (
+		<section className="rounded-xl border border-border bg-base p-4">
+			<div className="mb-1 flex items-center gap-2">
+				<h2 className="text-sm font-semibold text-text-primary">Refunds</h2>
+				<span className="rounded-full bg-surface px-1.5 text-xs tabular-nums text-text-muted">
+					{summary.refunds.length}
+				</span>
+			</div>
+			<p className="mb-2 text-xs text-text-muted">
+				Parts you took back against this receipt
+			</p>
+			<ul className="-mx-2">
+				{summary.refunds.map((r) => {
+					const counted = r.status !== "rejected";
+					return (
+						<li key={r.id}>
+							<Link
+								to={`/technician/purchases/${r.id}`}
+								className="flex min-h-11 items-center gap-3 rounded-md px-2 py-1.5 transition-colors duration-150 ease-out hover:bg-surface-raised"
+							>
+								<span className="min-w-0 flex-1">
+									<span className="block truncate text-sm text-text-primary">
+										{partsSummary(r.parts) ?? "Refund"}
+									</span>
+									<span className="block truncate text-xs text-text-muted">
+										{r.returned_at
+											? `Returned ${new Date(r.returned_at).toLocaleDateString()}`
+											: `Started ${new Date(r.created_at).toLocaleDateString()}`}
+									</span>
+								</span>
+								<span className="flex-shrink-0 text-right">
+									<span
+										className={`block text-sm tabular-nums ${
+											counted
+												? "text-text-primary"
+												: "text-text-muted line-through"
+										}`}
+									>
+										{counted ? "−" : ""}
+										{money(Number(r.amount))}
+									</span>
+									<span
+										className={`block text-xs font-medium ${TONE_CLASS[refundStateTone(r)]}`}
+									>
+										{refundStateLabel(r)}
+									</span>
+								</span>
+							</Link>
+						</li>
+					);
+				})}
+			</ul>
+			<dl className="mt-2 space-y-1 border-t border-border pt-2 text-xs">
+				<div className="flex justify-between gap-2 text-text-secondary">
+					<dt>Paid</dt>
+					<dd className="tabular-nums">{money(ledger.paid)}</dd>
+				</div>
+				{rows
+					.filter(([, v]) => v > 0)
+					.map(([label, v]) => (
+						<div
+							key={label}
+							className="flex justify-between gap-2 text-text-secondary"
+						>
+							<dt>{label}</dt>
+							<dd className="tabular-nums">−{money(v)}</dd>
+						</div>
+					))}
+				<div className="flex justify-between gap-2 border-t border-border pt-1 text-sm font-semibold text-text-primary">
+					{/* Only a landed credit comes off: one still on its way or with
+					    dispatch can yet be turned down. */}
+					<dt>Net cost so far</dt>
+					<dd className="tabular-nums">{money(ledger.net)}</dd>
+				</div>
+				{ledger.stillRefundable > 0 && (
+					<p className="text-text-muted">
+						{money(ledger.stillRefundable)} still refundable
+					</p>
+				)}
+			</dl>
+		</section>
+	);
+}
+
+/**
+ * A return is its own purchase pointing back at this one: same receipt (the credit
+ * slip), same lines, same review. Outline rather than primary — the purchase is
+ * done, and a filled button would read as a step still owed on it.
+ */
+function ReturnPartBar({
+	summary,
+	pending,
+	onClick,
+}: {
+	summary: FieldPurchaseRefundSummary | null;
+	pending: boolean;
+	onClick: () => void;
+}) {
+	// Every part accounted for: nothing left to start, so no button to press.
+	if (summary && Number(summary.remaining) <= 0 && !summary.draft_id) {
+		return (
+			<p className="flex h-11 items-center gap-2 text-sm text-text-muted">
+				<Undo2 aria-hidden size={16} /> Fully refunded
+			</p>
+		);
+	}
+	const resuming = !!summary?.draft_id;
+	const subtitle = resuming
+		? "You started a refund and have not sent it"
+		: summary && summary.in_progress_count > 0
+			? pendingRefundsLine(
+					summary.in_progress_count,
+					money(Number(summary.in_progress_value))
+				)
+			: "Refund it against this receipt";
+	return (
+		<div className="flex items-center gap-3">
+			<div className="min-w-0 flex-1">
+				<p className="truncate text-sm font-medium text-text-primary">
+					{resuming ? "Refund in progress" : "Took a part back?"}
+				</p>
+				<p className="truncate text-xs text-text-muted">{subtitle}</p>
+			</div>
+			<button
+				type="button"
+				disabled={pending}
+				aria-busy={pending}
+				onClick={onClick}
+				className="inline-flex h-11 flex-shrink-0 items-center gap-2 rounded-md border border-border bg-surface px-4 text-sm font-semibold text-text-primary transition-colors duration-150 ease-out hover:enabled:border-border-strong hover:enabled:bg-surface-raised disabled:opacity-60"
+			>
+				{pending ? (
+					<Loader2 aria-hidden size={16} className="animate-spin" />
+				) : (
+					<Undo2 aria-hidden size={16} />
+				)}
+				{pending ? "Starting…" : resuming ? "Continue refund" : "Return a part"}
+			</button>
+			<p role="status" aria-live="polite" className="sr-only">
+				{pending ? "Starting a refund" : ""}
+			</p>
+		</div>
 	);
 }
 

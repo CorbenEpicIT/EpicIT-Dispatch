@@ -85,7 +85,7 @@ export const getAllJobVisits = async (): Promise<JobVisit[]> => {
 export interface MyJobOption {
 	job_id: string;
 	job_name: string | null;
-	job_number: number | null;
+	job_number: string | null;
 	visit_id: string;
 	visit_name: string | null;
 	scheduled_start_at: string | null;

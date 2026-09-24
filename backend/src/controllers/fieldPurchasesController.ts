@@ -223,6 +223,172 @@ async function shapePurchase<T extends Shapeable>(row: T): Promise<Shaped<T>> {
 const shapePurchases = <T extends Shapeable>(rows: T[]): Promise<Shaped<T>[]> =>
 	Promise.all(rows.map(shapePurchase));
 
+/**
+ * A refund's claim on its parent. Second sign-off is not in COUNTED_SPEND_STATUSES
+ * (that list is about a technician's limits), but a refund waiting on it has still
+ * been submitted, so its credit is spoken for.
+ */
+const REFUND_CLAIM_STATUSES = [...COUNTED_SPEND_STATUSES, "pending_second_signoff"] as const;
+
+/** Submitted and not yet decided — what the technician reads as "pending". */
+const REFUND_IN_PROGRESS_STATUSES = ["pending_review", "queried", "pending_second_signoff"];
+
+/**
+ * What a refund claims back. `total` is client-editable on the submit sheet, so
+ * whichever of total or lines-plus-tax is larger — neither number can
+ * under-report the claim.
+ */
+function refundClaim(p: { total: Money; tax_amount: Money; lines: { line_total: Money }[] }) {
+	return Prisma.Decimal.max(
+		toDecimal(p.total),
+		sumDecimal(p.lines.map((l) => l.line_total)).plus(toDecimal(p.tax_amount)),
+	);
+}
+
+const REFUND_ROW_SELECT = {
+	id: true,
+	status: true,
+	total: true,
+	tax_amount: true,
+	refund_settled_at: true,
+	created_at: true,
+	purchased_at: true,
+	lines: {
+		select: { line_total: true, inventory_item_id: true, quantity: true, description: true },
+		orderBy: { sort_order: "asc" },
+	},
+} as const;
+
+const clampZero = (v: Prisma.Decimal) => Prisma.Decimal.max(v, 0);
+
+/**
+ * Every refund raised against an approved purchase, read the way its technician
+ * asks: is one already open, how much is waiting on dispatch, how much is left.
+ */
+async function refundSummaryOf(
+	sdb: ReturnType<typeof getScopedDb>,
+	parent: { id: string; total: Money },
+) {
+	const rows = await sdb.field_purchase.findMany({
+		where: { parent_purchase_id: parent.id, kind: "refund" },
+		select: REFUND_ROW_SELECT,
+		orderBy: { created_at: "desc" },
+	});
+	const claimOf = (statuses: readonly string[]) =>
+		sumDecimal(rows.filter((r) => statuses.includes(r.status)).map(refundClaim));
+	const inProgress = rows.filter((r) => REFUND_IN_PROGRESS_STATUSES.includes(r.status));
+	const approved = rows.filter((r) => r.status === "approved");
+	return {
+		draft_id: rows.find((r) => r.status === "draft")?.id ?? null,
+		in_progress_count: inProgress.length,
+		in_progress_value: sumDecimal(inProgress.map(refundClaim)).toString(),
+		approved_value: sumDecimal(
+			approved.filter((r) => !r.refund_settled_at).map(refundClaim),
+		).toString(),
+		settled_value: sumDecimal(
+			approved.filter((r) => r.refund_settled_at).map(refundClaim),
+		).toString(),
+		remaining: clampZero(
+			toDecimal(parent.total).minus(claimOf(REFUND_CLAIM_STATUSES)),
+		).toString(),
+		refunds: rows.map((r) => ({
+			id: r.id,
+			status: r.status,
+			amount: refundClaim(r).toString(),
+			refund_settled_at: r.refund_settled_at,
+			created_at: r.created_at,
+			returned_at: r.purchased_at,
+			parts: r.lines.map((l) => ({
+				description: l.description,
+				quantity: toDecimal(l.quantity).toString(),
+			})),
+		})),
+	};
+}
+
+/**
+ * The purchase a refund reverses, with what is still returnable on each line.
+ * Mirrors `applyRefundReversal`: quantities are drawn per item across the
+ * parent's lines in order, net of every other refund that has a claim on them.
+ */
+async function refundParentOf(
+	sdb: ReturnType<typeof getScopedDb>,
+	refund: { id: string; parent_purchase_id: string | null },
+) {
+	if (!refund.parent_purchase_id) return null;
+	const parent = await sdb.field_purchase.findFirst({
+		where: { id: refund.parent_purchase_id },
+		select: {
+			id: true,
+			vendor_name: true,
+			total: true,
+			purchased_at: true,
+			lines: {
+				select: {
+					id: true,
+					description: true,
+					inventory_item_id: true,
+					unit_price: true,
+					quantity: true,
+					disposition: true,
+					disposition_vehicle: { select: { name: true } },
+				},
+				orderBy: { sort_order: "asc" },
+			},
+		},
+	});
+	if (!parent) return null;
+	const others = await sdb.field_purchase.findMany({
+		where: {
+			parent_purchase_id: parent.id,
+			kind: "refund",
+			id: { not: refund.id },
+			status: { in: [...REFUND_CLAIM_STATUSES] },
+		},
+		select: REFUND_ROW_SELECT,
+	});
+	const taken = new Map<string, Prisma.Decimal>();
+	for (const r of others) {
+		for (const l of r.lines) {
+			if (!l.inventory_item_id) continue;
+			taken.set(
+				l.inventory_item_id,
+				(taken.get(l.inventory_item_id) ?? toDecimal(0)).plus(toDecimal(l.quantity)),
+			);
+		}
+	}
+	return {
+		id: parent.id,
+		vendor_name: parent.vendor_name,
+		total: toDecimal(parent.total).toString(),
+		purchased_at: parent.purchased_at,
+		remaining: clampZero(
+			toDecimal(parent.total).minus(sumDecimal(others.map(refundClaim))),
+		).toString(),
+		lines: parent.lines.map((l) => {
+			let returnable = toDecimal(l.quantity);
+			if (l.inventory_item_id) {
+				const owed = taken.get(l.inventory_item_id) ?? toDecimal(0);
+				const draw = Prisma.Decimal.min(owed, returnable);
+				taken.set(l.inventory_item_id, owed.minus(draw));
+				returnable = returnable.minus(draw);
+			}
+			return {
+				id: l.id,
+				description: l.description,
+				inventory_item_id: l.inventory_item_id,
+				unit_price: toDecimal(l.unit_price).toString(),
+				quantity: toDecimal(l.quantity).toString(),
+				returnable_qty: returnable.toString(),
+				// Where stock comes back off, which is the parent's destination —
+				// `applyRefundReversal` ignores the refund line's own.
+				disposition: l.disposition,
+				vehicle_name: l.disposition_vehicle?.name ?? null,
+			};
+		}),
+	};
+}
+
 function actorOf(context?: UserContext) {
 	return {
 		actor_type: context?.techId ? "technician" : context?.dispatcherId ? "dispatcher" : "system",
@@ -960,7 +1126,14 @@ export async function getPurchase(
 		orderBy: { at: "asc" },
 		select: { id: true, type: true, actor_type: true, actor_id: true, detail: true, at: true },
 	});
-	return { purchase: await shapePurchase(purchase), events };
+	// Detail only: the list never needs either, and each costs a query.
+	const refundContext =
+		purchase.kind === "refund"
+			? { parent: await refundParentOf(sdb, purchase) }
+			: purchase.kind === "purchase" && purchase.status === "approved"
+				? { refund_summary: await refundSummaryOf(sdb, purchase) }
+				: {};
+	return { purchase: { ...(await shapePurchase(purchase)), ...refundContext }, events };
 }
 
 /**
@@ -2374,7 +2547,11 @@ export async function submitPurchase(
 			const parent = existing.parent_purchase_id
 				? await sdb.field_purchase.findFirst({
 						where: { id: existing.parent_purchase_id },
-						select: { status: true, total: true },
+						select: {
+							status: true,
+							total: true,
+							allocations: { select: { job_id: true } },
+						},
 					})
 				: null;
 			if (!parent) return { err: "This refund is not attached to a purchase" };
@@ -2384,34 +2561,30 @@ export async function submitPurchase(
 			// The receipt is still the only proof, so a credit larger than what was
 			// reimbursed is not a refund - it is a second, unexamined payment. Summed
 			// across siblings: each refund alone could clear the parent's total while
-			// two together returned twice it. `total` is a client-editable field on
-			// the submit sheet, so a refund's own lines - not its (possibly deflated)
-			// total - are what it actually claims back; each side of the sum is
-			// measured by whichever of total or lines-plus-tax is larger, so neither
-			// number can under-report the claim.
-			const claimedAmount = (p: {
-				total: Money;
-				tax_amount: Money;
-				lines: { line_total: Money }[];
-			}) =>
-				Prisma.Decimal.max(
-					toDecimal(p.total),
-					sumDecimal(p.lines.map((l) => l.line_total)).plus(toDecimal(p.tax_amount)),
-				);
+			// two together returned twice it.
 			const siblings = await sdb.field_purchase.findMany({
 				where: {
 					parent_purchase_id: existing.parent_purchase_id,
 					kind: "refund",
 					id: { not: purchaseId },
-					status: { in: [...COUNTED_SPEND_STATUSES] },
+					status: { in: [...REFUND_CLAIM_STATUSES] },
 				},
 				select: { total: true, tax_amount: true, lines: { select: { line_total: true } } },
 			});
-			const claimed = sumDecimal([claimedAmount(existing), ...siblings.map(claimedAmount)]);
+			const claimed = sumDecimal([refundClaim(existing), ...siblings.map(refundClaim)]);
 			if (claimed.greaterThan(toDecimal(parent.total))) {
 				return {
 					err: "This refund and the others against the same purchase would exceed it",
 				};
+			}
+			// The reversal lands on the jobs that were charged. A job the purchase
+			// never covered has nothing to be credited back.
+			const parentJobs = new Set((parent.allocations ?? []).map((a) => a.job_id));
+			if (
+				parentJobs.size > 0 &&
+				existing.allocations.some((a) => !parentJobs.has(a.job_id))
+			) {
+				return { err: "A refund can only credit jobs the original purchase was for" };
 			}
 		}
 
@@ -3067,6 +3240,21 @@ export async function createRefund(
 		if (parent.technician_id !== techId) {
 			return { err: "You can only refund your own field purchases" };
 		}
+
+		// A second tap on "Return a part" is the technician going back to the
+		// refund they started, not asking for another empty one.
+		const [openDraft] = await sdb.field_purchase.findMany({
+			where: {
+				parent_purchase_id: parent.id,
+				kind: "refund",
+				status: "draft",
+				technician_id: techId,
+			},
+			select: PURCHASE_SELECT,
+			orderBy: { created_at: "desc" },
+			take: 1,
+		});
+		if (openDraft) return { purchase: await shapePurchase(openDraft) };
 
 		const purchase = await sdb.$transaction(async (tx) => {
 			const row = await tx.field_purchase.create({

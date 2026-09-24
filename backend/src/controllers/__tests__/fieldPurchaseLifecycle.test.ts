@@ -2274,3 +2274,174 @@ describe("refunds", () => {
 		expect(result.err).toBe("Only refunds can be settled");
 	});
 });
+
+describe("refund context on the detail read", () => {
+	const refundRow = (over: Record<string, unknown> = {}) => ({
+		id: "r",
+		status: "pending_review",
+		total: 0,
+		tax_amount: 0,
+		refund_settled_at: null,
+		created_at: new Date("2026-09-01T00:00:00Z"),
+		lines: [],
+		...over,
+	});
+
+	it("summarises what is open, approved, settled and left on an approved purchase", async () => {
+		mockDb.field_purchase.findFirst.mockResolvedValue(
+			purchase({ kind: "purchase", status: "approved", total: 100 }) as never,
+		);
+		mockDb.field_purchase_event.findMany.mockResolvedValue([] as never);
+		mockDb.field_purchase.findMany.mockResolvedValueOnce([
+			refundRow({ id: "d", status: "draft", total: 5 }),
+			refundRow({ id: "p", status: "pending_review", total: 42 }),
+			refundRow({ id: "a", status: "approved", total: 10 }),
+			refundRow({ id: "s", status: "approved", total: 8, refund_settled_at: new Date() }),
+			refundRow({ id: "x", status: "rejected", total: 99 }),
+		] as never);
+
+		const res = await getPurchase(ORG, PURCHASE, { techId: TECH });
+		const summary = (res.purchase as { refund_summary: Record<string, unknown> }).refund_summary;
+		expect(summary).toMatchObject({
+			draft_id: "d",
+			in_progress_count: 1,
+			in_progress_value: "42",
+			approved_value: "10",
+			settled_value: "8",
+			// Drafts and rejections claim nothing.
+			remaining: "40",
+		});
+	});
+
+	it("says what each refund returned, and when", async () => {
+		mockDb.field_purchase.findFirst.mockResolvedValue(
+			purchase({ kind: "purchase", status: "approved", total: 100 }) as never,
+		);
+		mockDb.field_purchase_event.findMany.mockResolvedValue([] as never);
+		const returned = new Date("2026-09-02T15:00:00Z");
+		mockDb.field_purchase.findMany.mockResolvedValueOnce([
+			refundRow({
+				purchased_at: returned,
+				lines: [{ line_total: 40, inventory_item_id: null, quantity: 2, description: "Capacitor" }],
+			}),
+		] as never);
+
+		const res = await getPurchase(ORG, PURCHASE, { techId: TECH });
+		const [row] = (res.purchase as { refund_summary: { refunds: unknown[] } }).refund_summary.refunds;
+		expect(row).toMatchObject({
+			returned_at: returned,
+			parts: [{ description: "Capacitor", quantity: "2" }],
+		});
+	});
+
+	it("never reports a negative remainder", async () => {
+		mockDb.field_purchase.findFirst.mockResolvedValue(
+			purchase({ kind: "purchase", status: "approved", total: 50 }) as never,
+		);
+		mockDb.field_purchase_event.findMany.mockResolvedValue([] as never);
+		mockDb.field_purchase.findMany.mockResolvedValueOnce([
+			refundRow({ status: "approved", total: 0, lines: [{ line_total: 80 }] }),
+		] as never);
+
+		const res = await getPurchase(ORG, PURCHASE, { techId: TECH });
+		expect((res.purchase as { refund_summary: { remaining: string } }).refund_summary.remaining).toBe("0");
+	});
+
+	it("carries no summary on a purchase that cannot be refunded yet", async () => {
+		mockDb.field_purchase.findFirst.mockResolvedValue(
+			purchase({ kind: "purchase", status: "pending_review" }) as never,
+		);
+		mockDb.field_purchase_event.findMany.mockResolvedValue([] as never);
+
+		const res = await getPurchase(ORG, PURCHASE, { techId: TECH });
+		expect(res.purchase).not.toHaveProperty("refund_summary");
+	});
+
+	it("gives a refund its parent, net of what sibling refunds already claim", async () => {
+		mockDb.field_purchase.findFirst
+			.mockResolvedValueOnce(
+				purchase({ kind: "refund", parent_purchase_id: "parent", status: "draft" }) as never,
+			)
+			.mockResolvedValueOnce({
+				id: "parent",
+				vendor_name: "Grainger",
+				total: 120,
+				purchased_at: new Date("2026-08-21T15:00:00Z"),
+				lines: [
+					{
+						id: "pl-1",
+						description: "Capacitor",
+						inventory_item_id: ITEM_UUID,
+						unit_price: 20,
+						quantity: 3,
+						disposition: "receive",
+						disposition_vehicle: { name: "Van 2" },
+					},
+					{
+						id: "pl-2",
+						description: "Tape",
+						inventory_item_id: null,
+						unit_price: 5,
+						quantity: 1,
+						disposition: "non_stock",
+						disposition_vehicle: null,
+					},
+				],
+			} as never);
+		mockDb.field_purchase_event.findMany.mockResolvedValue([] as never);
+		mockDb.field_purchase.findMany.mockResolvedValueOnce([
+			refundRow({
+				status: "pending_review",
+				total: 40,
+				lines: [{ line_total: 40, inventory_item_id: ITEM_UUID, quantity: 2 }],
+			}),
+		] as never);
+
+		const res = await getPurchase(ORG, PURCHASE, { techId: TECH });
+		const parent = (res.purchase as { parent: Record<string, unknown> }).parent;
+		expect(parent).toMatchObject({ id: "parent", vendor_name: "Grainger", remaining: "80" });
+		expect(parent.lines).toEqual([
+			expect.objectContaining({ id: "pl-1", returnable_qty: "1", vehicle_name: "Van 2" }),
+			expect.objectContaining({ id: "pl-2", returnable_qty: "1", disposition: "non_stock" }),
+		]);
+	});
+});
+
+describe("refund creation and submit guards", () => {
+	it("goes back to the technician's open draft instead of starting another", async () => {
+		mockDb.field_purchase.findFirst.mockResolvedValue({
+			id: "parent",
+			kind: "purchase",
+			status: "approved",
+			technician_id: TECH,
+			vendor_name: "Grainger",
+			supplier_id: null,
+			allocations: [],
+		} as never);
+		mockDb.field_purchase.findMany.mockResolvedValueOnce([
+			purchase({ id: "refund-open", kind: "refund", parent_purchase_id: "parent" }),
+		] as never);
+
+		const res = await createRefund(ORG, TECH, { parent_purchase_id: PARENT_UUID });
+		expect((res.purchase as { id: string }).id).toBe("refund-open");
+		expect(tx.field_purchase.create).not.toHaveBeenCalled();
+	});
+
+	it("refuses a refund that credits a job the purchase never covered", async () => {
+		mockDb.field_purchase.findFirst
+			.mockResolvedValueOnce(
+				purchase({ kind: "refund", parent_purchase_id: "parent", total: 50 }, [verified()], [
+					{ job_id: "job-other", amount: 50 },
+				]) as never,
+			)
+			.mockResolvedValueOnce({
+				status: "approved",
+				total: 100,
+				allocations: [{ job_id: "job-1" }],
+			} as never);
+		mockDb.field_purchase.findMany.mockResolvedValueOnce([]);
+
+		const res = await submitPurchase(ORG, PURCHASE, { techId: TECH });
+		expect(res.err).toBe("A refund can only credit jobs the original purchase was for");
+	});
+});

@@ -17,6 +17,7 @@ import ReceiptScanner from "./ReceiptScanner";
 import ReceiptLightbox from "../../fieldPurchases/ReceiptLightbox";
 import { FOCUS_RING } from "../../fieldPurchases/fieldPurchaseFormat";
 import type { FieldPurchase } from "../../../types/fieldPurchases";
+import { sheetCopy } from "./sheetCopy";
 
 interface Props {
 	purchase: FieldPurchase;
@@ -31,6 +32,7 @@ export default function ReceiptCaptureCard({ purchase, editable }: Props) {
 	const upload = useUploadReceipt();
 	const retryOcr = useRetryOcr();
 	const toast = useToast();
+	const copy = sheetCopy(purchase.kind);
 
 	// The object URL holds the whole photo in memory until it is let go, and a
 	// technician can retake one several times before it uploads.
@@ -52,7 +54,7 @@ export default function ReceiptCaptureCard({ purchase, editable }: Props) {
 		try {
 			await retryOcr.mutateAsync(purchase.id);
 		} catch (err) {
-			toast.error(errorMessage(err, "Could not read the receipt"));
+			toast.error(errorMessage(err, `Could not read the ${copy.noun}`));
 		}
 	}
 
@@ -63,13 +65,15 @@ export default function ReceiptCaptureCard({ purchase, editable }: Props) {
 		await upload.mutateAsync({ id: purchase.id, capture });
 		setPreview(URL.createObjectURL(capture.file));
 		setScanning(false);
-		toast.success("Receipt attached");
+		toast.success(`${copy.receiptTitle} attached`);
 	}
 
 	return (
 		<section className="rounded-xl border border-border bg-base p-4">
 			<div className="mb-3 flex items-center justify-between">
-				<h2 className="text-sm font-semibold text-text-primary">Receipt</h2>
+				<h2 className="text-sm font-semibold text-text-primary">
+					{copy.receiptTitle}
+				</h2>
 				{hasReceipt && (
 					<span className="inline-flex items-center gap-1 text-xs text-text-muted">
 						{hasGeo ? (
@@ -87,7 +91,7 @@ export default function ReceiptCaptureCard({ purchase, editable }: Props) {
 					<button
 						type="button"
 						onClick={() => setViewing(true)}
-						aria-label="Open the receipt photo full screen"
+						aria-label={`Open the ${copy.noun} photo full screen`}
 						className={`relative mb-3 block min-h-11 w-full overflow-hidden rounded-lg border border-border transition-colors duration-150 hover:bg-surface-raised ${FOCUS_RING}`}
 					>
 						{/* Cropped to a consistent strip rather than letterboxed: a
@@ -107,7 +111,7 @@ export default function ReceiptCaptureCard({ purchase, editable }: Props) {
 					{viewing && (
 						<ReceiptLightbox
 							url={shown}
-							label="Receipt photo"
+							label={`${copy.receiptTitle} photo`}
 							rotation={rotation}
 							onRotate={() =>
 								setRotation((r) => (r + 90) % 360)
@@ -131,7 +135,7 @@ export default function ReceiptCaptureCard({ purchase, editable }: Props) {
 							size={12}
 							className="animate-spin"
 						/>{" "}
-						Reading the receipt…
+						Reading the {copy.noun}…
 					</p>
 				)}
 				{hasReceipt &&
@@ -147,8 +151,8 @@ export default function ReceiptCaptureCard({ purchase, editable }: Props) {
 				{hasReceipt && readFailed && editable && (
 					<div className="mb-3 flex items-center justify-between gap-2 rounded-md bg-warning-bg px-2.5 py-2">
 						<p className="text-xs text-warning-text">
-							Could not read the receipt — enter the lines
-							by hand.
+							Could not read the {copy.noun} — enter the
+							lines by hand.
 						</p>
 						<button
 							type="button"
@@ -181,14 +185,14 @@ export default function ReceiptCaptureCard({ purchase, editable }: Props) {
 						<Camera aria-hidden size={16} />
 						{hasReceipt
 							? "Replace photo"
-							: "Photograph receipt"}
+							: copy.photograph}
 					</button>
 					{scanning && (
 						<ReceiptScanner
 							title={
 								hasReceipt
 									? "Replace photo"
-									: "Photograph receipt"
+									: copy.photograph
 							}
 							confirmLabel={
 								hasReceipt
@@ -201,8 +205,7 @@ export default function ReceiptCaptureCard({ purchase, editable }: Props) {
 					)}
 					{!hasReceipt && (
 						<p className="mt-2 text-xs text-text-muted">
-							A photo is required before you can submit —
-							it is the only record of the purchase.
+							{copy.photoRequired}
 						</p>
 					)}
 				</>
@@ -217,7 +220,7 @@ export default function ReceiptCaptureCard({ purchase, editable }: Props) {
 				// A purchase awaiting pre-approval has not been bought, so there is
 				// nothing to have photographed. Claiming otherwise is the one thing
 				// this card must not do.
-				<p className="text-xs text-text-muted">No receipt yet.</p>
+				<p className="text-xs text-text-muted">{copy.noPhoto}</p>
 			)}
 		</section>
 	);

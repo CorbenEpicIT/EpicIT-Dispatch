@@ -114,7 +114,7 @@ export interface FieldPurchaseAllocation {
 	job_visit_id: string | null;
 	/** Derived from the lines assigned to this job — never typed, never sent. */
 	amount: string;
-	job: { id: string; job_number: number | null; name: string | null } | null;
+	job: { id: string; job_number: string | null; name: string | null } | null;
 	job_visit: { id: string; name: string | null; scheduled_start_at: string | null } | null;
 }
 
@@ -186,6 +186,59 @@ export interface FieldPurchase {
 	reviewed_by: { id: string; name: string } | null;
 	lines: FieldPurchaseLine[];
 	allocations: FieldPurchaseAllocation[];
+	/** Detail read only, and only on an approved purchase. */
+	refund_summary?: FieldPurchaseRefundSummary;
+	/** Detail read only, and only on a refund. */
+	parent?: FieldPurchaseRefundParent | null;
+}
+
+/** The refunds raised against one approved purchase. Money is claim-sized. */
+export interface FieldPurchaseRefundSummary {
+	/** A refund already started and not yet sent — "Return a part" resumes it. */
+	draft_id: string | null;
+	/** Sent and not yet decided. */
+	in_progress_count: number;
+	in_progress_value: string;
+	/** Approved, credit not in yet. */
+	approved_value: string;
+	settled_value: string;
+	/** What can still be refunded against this purchase. */
+	remaining: string;
+	refunds: {
+		id: string;
+		status: FieldPurchaseStatus;
+		amount: string;
+		refund_settled_at: string | null;
+		created_at: string;
+		/** When the part went back — the credit slip's date, once there is one. */
+		returned_at?: string | null;
+		/** Absent from a server older than this client, so read with a fallback. */
+		parts?: { description: string; quantity: string }[];
+	}[];
+}
+
+/** One line of the purchase a refund reverses. */
+export interface FieldPurchaseRefundParentLine {
+	id: string;
+	description: string;
+	inventory_item_id: string | null;
+	unit_price: string;
+	quantity: string;
+	/** Net of every other refund's claim on the same item. */
+	returnable_qty: string;
+	/** Where stock comes back off on approval: the parent's destination, not the refund's. */
+	disposition: FieldPurchaseDisposition | null;
+	vehicle_name: string | null;
+}
+
+export interface FieldPurchaseRefundParent {
+	id: string;
+	vendor_name: string | null;
+	total: string;
+	purchased_at: string | null;
+	/** Left to refund, not counting this refund itself. */
+	remaining: string;
+	lines: FieldPurchaseRefundParentLine[];
 }
 
 /**
