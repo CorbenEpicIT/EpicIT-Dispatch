@@ -50,6 +50,7 @@ export default function InventoryPage() {
 	const [sort, setSort] = useState<InventorySortOption>("name");
 	const [search, setSearch] = useState("");
 	const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+	const [unassignedOnly, setUnassignedOnly] = useState(false);
 	const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
 	const [isImportExportOpen, setIsImportExportOpen] = useState(false);
@@ -104,7 +105,7 @@ export default function InventoryPage() {
 					item.name.toLowerCase().includes(q) ||
 					(item.sku && item.sku.toLowerCase().includes(q)) ||
 					(item.barcode && item.barcode.toLowerCase().includes(q)) ||
-					item.location.toLowerCase().includes(q) ||
+					(item.location?.toLowerCase().includes(q) ?? false) ||
 					// Matches the technician vehicle page and AdjustStockModal,
 					// which already searched category — this page was the outlier.
 					(item.category?.toLowerCase().includes(q) ?? false) ||
@@ -118,8 +119,12 @@ export default function InventoryPage() {
 			);
 		}
 
+		if (unassignedOnly) {
+			items = items.filter((item) => item.location == null);
+		}
+
 		return items;
-	}, [inventoryItems, search, selectedTagIds]);
+	}, [inventoryItems, search, selectedTagIds, unassignedOnly]);
 
 	const mappedIds = useMemo(() => {
 		return new Set(mappedItems.map((item) => item.inventory_item_id));
@@ -134,6 +139,14 @@ export default function InventoryPage() {
 			onRemove: () => setSelectedTagIds((prev) => prev.filter((i) => i !== id)),
 		}];
 	});
+
+	if (unassignedOnly) {
+		activeTagChips.push({
+			label: "Unassigned location",
+			color: "blue" as const,
+			onRemove: () => setUnassignedOnly(false),
+		});
+	}
 
 	const scrollAndHighlight = useCallback((itemId: string) => {
 		cardRefs.current
@@ -330,6 +343,19 @@ export default function InventoryPage() {
 								options={SORT_OPTIONS}
 								exclusive
 							/>
+							<button
+								type="button"
+								onClick={() => setUnassignedOnly((v) => !v)}
+								aria-pressed={unassignedOnly}
+								title="Show only items with no location assigned"
+								className={`flex items-center h-9 px-3 rounded-md border text-sm transition-colors cursor-pointer whitespace-nowrap ${
+									unassignedOnly
+										? "bg-primary-bg border-primary text-primary-text"
+										: "bg-base border-border text-text-tertiary hover:text-text-primary"
+								}`}
+							>
+								Unassigned location
+							</button>
 						</div>
 					}
 					right={
@@ -346,6 +372,7 @@ export default function InventoryPage() {
 					onClearAll={() => {
 						setSearch("");
 						setSelectedTagIds([]);
+						setUnassignedOnly(false);
 					}}
 				/>
 

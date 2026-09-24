@@ -54,6 +54,7 @@ export default function ProvisionalDetail({
 		row.low_stock_threshold != null ? String(row.low_stock_threshold) : ""
 	);
 	const [qty, setQty] = useState("0");
+	const [location, setLocation] = useState("");
 	const [mergeTarget, setMergeTarget] = useState<ReconcileTarget | null>(null);
 	const [confirm, setConfirm] = useState<"merge" | "reject" | null>(null);
 
@@ -92,6 +93,7 @@ export default function ProvisionalDetail({
 				...(threshold.trim() === ""
 					? {}
 					: { low_stock_threshold: Number(threshold) }),
+				...(location.trim() === "" ? {} : { location: location.trim() }),
 				...(Number(qty) > 0 ? { initial_warehouse_qty: Number(qty) } : {}),
 			});
 			toast.success(`"${row.name}" is in the catalog.`);
@@ -216,6 +218,24 @@ export default function ProvisionalDetail({
 								onChange={(e) =>
 									setThreshold(e.target.value)
 								}
+								className={INPUT}
+							/>
+						</Field>
+						<Field
+							label="Location (optional)"
+							htmlFor="adopt-location"
+						>
+							<input
+								id="adopt-location"
+								type="text"
+								value={location}
+								disabled={busy}
+								onChange={(e) =>
+									setLocation(
+										e.target.value.slice(0, 255)
+									)
+								}
+								placeholder="e.g. A42 - 325"
 								className={INPUT}
 							/>
 						</Field>

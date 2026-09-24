@@ -1182,7 +1182,6 @@ async function provisionalItemFor(
 			organization_id: orgId,
 			name,
 			description: "",
-			location: "",
 			quantity: 0,
 			cost,
 			unit_price: cost,

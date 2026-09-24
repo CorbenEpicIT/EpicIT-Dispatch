@@ -460,7 +460,7 @@ export default function CreateInventoryItem({
 			setCategory(existingItem.category || "");
 			setBarcode(existingItem.barcode || "");
 			setDescription(existingItem.description);
-			setLocation(existingItem.location);
+			setLocation(existingItem.location || "");
 			setQuantity(existingItem.quantity);
 			setUnit(seedUnit(existingItem.unit));
 			setUnitPrice(
@@ -568,11 +568,8 @@ export default function CreateInventoryItem({
 			const msg = tooLong("Name", name, LIMITS.name);
 			if (msg) e.name = msg;
 		}
-		if (!location.trim()) e.location = "Location is required.";
-		else {
-			const msg = tooLong("Location", location, LIMITS.location);
-			if (msg) e.location = msg;
-		}
+		const locationMsg = tooLong("Location", location, LIMITS.location);
+		if (locationMsg) e.location = locationMsg;
 		const skuMsg = tooLong("SKU", sku, LIMITS.sku);
 		if (skuMsg) e.sku = skuMsg;
 		const categoryMsg = tooLong("Category", category, LIMITS.category);
@@ -821,7 +818,7 @@ export default function CreateInventoryItem({
 			category: category.trim() || null,
 			barcode: barcode.trim() || null,
 			description: description.trim(),
-			location: location.trim(),
+			location: location.trim() || null,
 			quantity,
 			// No trim-or-default: the select can't emit a blank or an alias. On an
 			// edit, handleSubmit strips this unless the user actually changed it.
@@ -1314,7 +1311,7 @@ export default function CreateInventoryItem({
 							</div>
 							<div className="min-w-0">
 								<label className={LABEL}>
-									Location *
+									Location
 								</label>
 								<input
 									type="text"

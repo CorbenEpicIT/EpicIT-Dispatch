@@ -225,6 +225,22 @@ describe("InventoryReconcilePage — provisional verbs", () => {
 		});
 	});
 
+	test("adopt sends a typed location trimmed", async () => {
+		queueData = makeQueue({ provisional: [provisionalRow({ cost: 12 })] });
+		renderPage("?tab=detail");
+		await openRow(/Field Compressor/);
+
+		await userEvent.type(screen.getByLabelText("Location (optional)"), "  A42 - 325  ");
+		await userEvent.click(screen.getByRole("button", { name: "Adopt into catalog" }));
+
+		expect(mockAdopt).toHaveBeenCalledWith({
+			itemId: "item-1",
+			cost: 12,
+			unit: "each",
+			location: "A42 - 325",
+		});
+	});
+
 	// A zero opening quantity is the common case and must not write a movement.
 	test("adopt omits the opening quantity when it is left at zero", async () => {
 		queueData = makeQueue({ provisional: [provisionalRow({ cost: 12 })] });

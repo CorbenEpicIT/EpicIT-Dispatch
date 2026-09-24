@@ -23,6 +23,15 @@ interface ReceivePurchaseModalProps {
 const isReceivable = (l: PurchaseLine) => l.disposition === "receive" || l.disposition === "non_stock";
 const remainderOf = (l: PurchaseLine) => Math.max(0, Number(l.quantity) - Number(l.quantity_recieved));
 
+// Only an item with no home gets an input. One that already lives on A42 is
+// read-only here: the receive modal must never be able to move it, because
+// location is a single value on the item, not a property of this delivery.
+// A fully-received line's quantity input is disabled and it never enters
+// `touched`, so a location typed into it would be silently dropped on submit
+// — the input (and the bulk field it would justify) must not render at all.
+const needsLocation = (l: PurchaseLine) =>
+	!!l.inventory_item && !l.inventory_item.location && remainderOf(l) > 0;
+
 export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: ReceivePurchaseModalProps) {
 	const toast = useToast();
 	const { mutateAsync: receive, isPending } = useReceivePurchaseMutation();
@@ -37,6 +46,15 @@ export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: Rece
 		Object.fromEntries(lines.map((l) => [l.id, l.disposition_vehicle_id ?? ""])),
 	);
 	const [isScannerOpen, setIsScannerOpen] = useState(false);
+	const [locDrafts, setLocDrafts] = useState<Record<string, string>>({});
+	const [bulkLoc, setBulkLoc] = useState("");
+
+	// Only stock landing in the warehouse can give an item a home. A truck-bound
+	// or job-costed line never touches a shelf — the server ignores a location
+	// on one, so offering the input would be a silent no-op.
+	const canSetLocation = (l: PurchaseLine) =>
+		needsLocation(l) && l.disposition === "receive" && !vehicleOverrides[l.id];
+	const anyCanSetLocation = lines.some(canSetLocation);
 
 	const setDraft = (lineId: string, value: string, max: number) => {
 		const cleaned = value.replace(/[^0-9.]/g, "");
@@ -77,17 +95,25 @@ export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: Rece
 			const { warnings } = await receive({
 				id: purchase.id,
 				data: {
-					lines: touched.map((t) => ({
-						id: t.line.id,
-						quantity_received: t.qty,
-						...(t.line.disposition === "receive"
-							? { disposition_vehicle_id: vehicleOverrides[t.line.id] || null }
-							: {}),
-					})),
+					lines: touched.map((t) => {
+						const loc = (locDrafts[t.line.id] || bulkLoc).trim();
+						return {
+							id: t.line.id,
+							quantity_received: t.qty,
+							...(t.line.disposition === "receive"
+								? { disposition_vehicle_id: vehicleOverrides[t.line.id] || null }
+								: {}),
+							...(canSetLocation(t.line) && loc ? { location: loc } : {}),
+						};
+					}),
 				},
 			});
 			toast.success("Purchase order updated");
 			warnings.forEach((w) => toast.warning(w));
+			// The modal stays mounted between opens, so a stale bulk value would
+			// otherwise prefill the next delivery's unassigned lines.
+			setBulkLoc("");
+			setLocDrafts({});
 			onClose();
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : "Failed to receive purchase order");
@@ -127,6 +153,20 @@ export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: Rece
 					Scan to receive
 				</button>
 			</div>
+
+			{anyCanSetLocation && (
+				<div className="px-4 sm:px-5 pb-2 flex-shrink-0">
+					<label className="block text-xs text-text-muted mb-1">Put unassigned items in</label>
+					<input
+						type="text"
+						value={bulkLoc}
+						onChange={(e) => setBulkLoc(e.target.value.slice(0, 255))}
+						placeholder="e.g. Receiving Dock"
+						className="w-full h-9 px-3 rounded border border-border-input bg-base text-sm text-text-primary focus:border-primary focus:outline-none disabled:opacity-50"
+						disabled={isPending}
+					/>
+				</div>
+			)}
 
 			<div className="px-4 sm:px-5 pb-4 space-y-2.5 overflow-y-auto" style={{ maxHeight: "50vh" }}>
 				{lines.length === 0 && (
@@ -180,19 +220,38 @@ export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: Rece
 													: ""}
 											</span>
 										)}
+										{l.inventory_item?.location && <span>{l.inventory_item.location}</span>}
 									</div>
 								</div>
-								<div className="flex items-center gap-1.5 flex-shrink-0">
-									<input
-										type="text"
-										inputMode="decimal"
-										value={drafts[l.id] ?? ""}
-										onChange={(e) => setDraft(l.id, e.target.value, max)}
-										disabled={max <= 0}
-										aria-label={`Quantity received for ${l.description}`}
-										className="w-16 h-8 text-right tabular-nums text-sm font-semibold border border-border-input rounded bg-base text-text-primary px-2 focus:border-primary focus:outline-none disabled:opacity-50"
-									/>
-									<span className="text-xs text-text-muted w-8">{unit}</span>
+								<div className="flex flex-col items-end gap-1 flex-shrink-0">
+									<div className="flex items-center gap-1.5">
+										<input
+											type="text"
+											inputMode="decimal"
+											value={drafts[l.id] ?? ""}
+											onChange={(e) => setDraft(l.id, e.target.value, max)}
+											disabled={max <= 0}
+											aria-label={`Quantity received for ${l.description}`}
+											className="w-16 h-8 text-right tabular-nums text-sm font-semibold border border-border-input rounded bg-base text-text-primary px-2 focus:border-primary focus:outline-none disabled:opacity-50"
+										/>
+										<span className="text-xs text-text-muted w-8">{unit}</span>
+									</div>
+									{canSetLocation(l) && (
+										<input
+											type="text"
+											value={locDrafts[l.id] ?? ""}
+											onChange={(e) =>
+												setLocDrafts((prev) => ({
+													...prev,
+													[l.id]: e.target.value.slice(0, 255),
+												}))
+											}
+											placeholder={bulkLoc || "Location (optional)"}
+											aria-label={`Location for ${l.description}`}
+											disabled={isPending}
+											className="w-24 h-6 px-1.5 rounded border border-border-input bg-base text-[11px] text-text-primary focus:border-primary focus:outline-none disabled:opacity-50"
+										/>
+									)}
 								</div>
 							</div>
 							<div className="mt-2 flex items-center gap-2">

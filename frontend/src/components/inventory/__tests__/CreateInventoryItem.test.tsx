@@ -184,18 +184,18 @@ describe("step gating", () => {
 		await userEvent.click(screen.getByRole("button", { name: "Next" }));
 
 		expect(screen.getByText("Name is required.")).toBeInTheDocument();
-		expect(screen.getByText("Location is required.")).toBeInTheDocument();
+		// Location is optional — an item can exist before it has a shelf.
+		expect(screen.queryByText("Location is required.")).not.toBeInTheDocument();
 		// Still on Basics — step 2's Quantity never mounted.
 		expect(screen.queryByLabelText("Quantity")).not.toBeInTheDocument();
 		expect(screen.getByPlaceholderText("Item Name")).toHaveAttribute("aria-invalid", "true");
 	});
 
-	it("advances once the step 1 errors are fixed", async () => {
+	it("advances once the step 1 errors are fixed, with no location", async () => {
 		render(<CreateInventoryItem isOpen onClose={vi.fn()} />);
 
 		await userEvent.click(screen.getByRole("button", { name: "Next" }));
 		await userEvent.type(screen.getByPlaceholderText("Item Name"), "Widget");
-		await userEvent.type(screen.getByPlaceholderText("e.g. A42 - 325"), "A1-100");
 		await userEvent.click(screen.getByRole("button", { name: "Next" }));
 
 		expect(await screen.findByLabelText("Quantity")).toBeInTheDocument();

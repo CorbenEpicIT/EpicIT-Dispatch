@@ -38,7 +38,14 @@ export interface PurchaseLine {
 	/** Links to `allocations` below. */
 	allocation_id: string | null;
 	sort_order: number;
-	inventory_item: { id: string; name: string; sku: string | null; unit: string; barcode: string | null } | null;
+	inventory_item: {
+		id: string;
+		name: string;
+		sku: string | null;
+		unit: string;
+		barcode: string | null;
+		location: string | null;
+	} | null;
 	disposition_vehicle: { id: string; name: string } | null;
 }
 

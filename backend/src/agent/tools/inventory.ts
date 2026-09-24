@@ -82,7 +82,7 @@ export const getInventoryLevels = defineTool({
 				id: string;
 				name: string;
 				sku: string | null;
-				location: string;
+				location: string | null;
 				quantity: Prisma.Decimal;
 				unit: string;
 				low_stock_threshold: Prisma.Decimal | null;

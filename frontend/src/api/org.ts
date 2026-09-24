@@ -88,6 +88,7 @@ export const approveItem = async (
 		cost?: number;
 		unit?: string;
 		low_stock_threshold?: number | null;
+		location?: string | null;
 	},
 ): Promise<void> => {
 	try {

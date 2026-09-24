@@ -14,7 +14,7 @@ export interface InventoryItem {
 	id: string;
 	name: string;
 	description: string;
-	location: string;
+	location: string | null;
 	quantity: number;
 	unit_price: number | null;
 	cost: number | null;
@@ -49,7 +49,7 @@ export type InventorySortOption =
 export interface CreateInventoryItemInput {
 	name: string;
 	description: string;
-	location: string;
+	location?: string | null;
 	quantity: number;
 	unit?: string;
 	unit_price?: number | null;

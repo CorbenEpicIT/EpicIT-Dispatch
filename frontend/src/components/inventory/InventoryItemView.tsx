@@ -12,6 +12,7 @@ import { formatQty } from "../../lib/units";
 import ImageCarousel from "./ImageCarousel";
 import AddToLabelQueueButton from "./labels/AddToLabelQueueButton";
 import { TrackingBadges } from "./TrackingBadges";
+import LocationValue, { UNASSIGNED_LOCATION } from "./LocationValue";
 
 interface InventoryItemViewProps {
 	item: InventoryItem;
@@ -47,6 +48,8 @@ function ringQty(quantity: number): string {
 
 // Max rows of tag chips a list row absorbs before clipping.
 const TAG_ROWS = 2;
+
+type MetaPill = { label: string; value: string; truncate: boolean; muted?: boolean };
 
 /**
  * Tag chips clipped to two rows, with overflow counted in a trailing "+N".
@@ -177,13 +180,21 @@ export default function InventoryItemView({
 
 		// PRICE never shrinks and stays last; SKU/location truncate instead so a long
 		// freetext value can't push it out of the clipped row.
+		// LOC is unconditional (unlike SKU/PRICE): an unassigned item still shows the
+		// pill, muted, rather than disappearing — the list view must surface the same
+		// "Unassigned" state the card view does, not silently drop the cell.
 		const metaPills = [
 			item.sku ? { label: "SKU", value: item.sku, truncate: true } : null,
-			item.location ? { label: "LOC", value: item.location, truncate: true } : null,
+			{
+				label: "LOC",
+				value: item.location ?? UNASSIGNED_LOCATION,
+				truncate: true,
+				muted: item.location == null,
+			},
 			item.unit_price !== null
 				? { label: "PRICE", value: `$${Number(item.unit_price).toFixed(2)}`, truncate: false }
 				: null,
-		].filter((p): p is { label: string; value: string; truncate: boolean } => p !== null);
+		].filter((p): p is MetaPill => p !== null);
 
 		const tags = item.tags ?? [];
 
@@ -231,7 +242,7 @@ export default function InventoryItemView({
 										)}
 										{/* No flex here: a flex box turns its text into an anonymous item that clips without ellipsis. */}
 										<span
-											className={`text-[11px] text-text-secondary ${
+											className={`text-[11px] ${pill.muted ? "text-text-muted" : "text-text-secondary"} ${
 												pill.truncate
 													? "min-w-0 truncate"
 													: "shrink-0 whitespace-nowrap"
@@ -436,7 +447,7 @@ export default function InventoryItemView({
 			</div>
 			<hr className="my-2 text-text-faint" />
 			<div className="grid grid-cols-2 gap-x-4 gap-y-3 flex-1">
-				<FieldRow label="Location" value={item.location ?? "—"} />
+				<FieldRow label="Location" value={<LocationValue location={item.location} />} />
 				<FieldRow label="SKU" value={item.sku ?? "—"} />
 				<FieldRow label="Unit Price" value={item.unit_price != null ? `$${Number(item.unit_price).toFixed(2)}` : "—"} />
 				{/* Carries the unit: a bare "14" on an item measured in ft told a
