@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { InventoryItem } from "./inventory";
+import type { Coordinates } from "./location";
 
 export const CreateVehicleSchema = z.object({
 	name: z.string().min(1, "Name is required"),
@@ -12,6 +13,14 @@ export const CreateVehicleSchema = z.object({
 	status: z.enum(["active", "inactive"]).optional(),
 	notes: z.string().max(1000).nullable().optional(),
 	current_odometer_mi: z.number().int().min(0).nullable().optional(),
+	stored_at: z.string().nullable().optional(),
+	stored_at_coords: z
+		.object({
+			lat: z.number(),
+			lon: z.number(),
+		})
+		.nullable()
+		.optional(),
 });
 
 export interface Vehicle {
@@ -32,6 +41,8 @@ export interface Vehicle {
 	updated_at: string;
 	stock_items?: VehicleStockItem[];
 	current_technicians?: { id: string; name: string }[];
+	stored_at: string;
+	stored_at_coords: Coordinates;
 }
 
 export interface VehicleStockItem {
@@ -67,6 +78,8 @@ export interface CreateVehicleInput {
 	status?: "active" | "inactive";
 	notes?: string | null;
 	current_odometer_mi?: number | null;
+	stored_at?: string | null;
+	stored_at_coords?: Coordinates | null;
 }
 
 export type UpdateVehicleInput = Partial<CreateVehicleInput>;

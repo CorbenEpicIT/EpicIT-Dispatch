@@ -369,6 +369,16 @@ const createVehicleSchema = z.object({
 	status:        z.enum(["active", "inactive"]).default("active"),
 	notes:         z.string().max(1000).nullable().optional(),
 	current_odometer_mi: z.number().int().min(0).nullable().optional(),
+	stored_at: z.string().nullable().optional(),
+	stored_at_coords: z
+		.object({
+			lat: z.number(),
+			lon: z.number(),
+		})
+		.nullable()
+		.optional()
+		// Prisma Json columns reject plain null
+		.transform((v) => (v === null ? Prisma.DbNull : v)),
 });
 
 const updateVehicleSchema = createVehicleSchema.partial();
@@ -539,6 +549,7 @@ export const createVehicle = async (data: unknown, organizationId: string, conte
 				type:          { old: null, new: vehicle.type },
 				license_plate: { old: null, new: vehicle.license_plate },
 				status:        { old: null, new: vehicle.status },
+				stored_at: 	   { old: null, new: vehicle.stored_at },
 			},
 		});
 		return { err: "", item: vehicle };
@@ -571,7 +582,7 @@ export const updateVehicle = async (id: string, data: unknown, organizationId: s
 			...getActorInfo(context),
 			changes: buildChanges(existing, parsed, [
 				"name", "type", "license_plate", "year", "make",
-				"model", "color", "status", "notes", "current_odometer_mi",
+				"model", "color", "status", "notes", "current_odometer_mi", "stored_at"
 			] as const),
 		});
 		return { err: "", item: vehicle };

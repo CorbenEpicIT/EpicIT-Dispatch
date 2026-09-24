@@ -510,7 +510,10 @@ export const goOffline = async (techId: string, organizationId: string, techCord
 			return { err: "Cannot end shift while clocked into a visit" };
 
 		// calculating the return milage of last job
-		if (techCords) {
+		const vehicle = await sdb.vehicle.findFirst({ where: {id: tech.current_vehicle_id ?? "" }, select: {stored_at_coords: true}});
+		// if no stored location for vehicle fall back on tech's location
+		const returnTo = vehicle?.stored_at_coords as {lat: number; lon: number } ?? techCords;
+		if (returnTo) {
 			const org = await sdb.organization.findFirst({ where: { id: organizationId }, select: { timezone: true } });
 			const orgTz = org?.timezone ?? "UTC";
 
@@ -533,14 +536,14 @@ export const goOffline = async (techId: string, organizationId: string, techCord
 				const jobLon = jobCoords?.lon ?? jobCoords?.lng;
 				const miles = await fetchRouteDistanceMiles(
 					jobCoords?.lat && jobLon ? { lat: jobCoords.lat, lon: jobLon } : null,
-					techCords,
+					returnTo,
 				);
 				if (miles !== null) {
-					await sdb.job_visit.update({
-						where: { id: lastVisit.id },
+					const claimed = await sdb.job_visit.updateMany({
+						where: { id: lastVisit.id, estimated_return_drive_miles: null },
 						data: { estimated_return_drive_miles: miles },
 					});
-					applyOdometerIncrement(sdb, techId, miles);
+					if (claimed.count) await applyOdometerIncrement(sdb, techId, miles);
 				}
 			}
 		}

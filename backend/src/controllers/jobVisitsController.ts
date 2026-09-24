@@ -1745,7 +1745,7 @@ export const applyVisitTransition = async (
 				updated.estimated_drive_miles = miles;
 				
 				if (context?.techId !== undefined) 
-					applyOdometerIncrement(sdb, context.techId, miles);
+					await applyOdometerIncrement(sdb, context.techId, miles);
 			}
 		}
 		return { err: "", item: updated ?? undefined };

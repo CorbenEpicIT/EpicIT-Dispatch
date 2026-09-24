@@ -1,7 +1,10 @@
 ﻿import { useState, useEffect, useMemo } from "react";
+import { X } from "lucide-react";
 import type { Vehicle, UpdateVehicleInput } from "../../types/vehicles";
 import { useUpdateVehicleMutation } from "../../hooks/useVehicles";
 import { FormWizardContainer } from "../ui/forms/FormWizardContainer";
+import AddressForm from "../ui/AddressForm";
+import type { GeocodeResult } from "../../types/location";
 
 interface EditVehicleProps {
 	isOpen: boolean;
@@ -25,6 +28,7 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 	const [status, setStatus] = useState<"active" | "inactive">(vehicle.status);
 	const [notes, setNotes] = useState(vehicle.notes ?? "");
 	const [odometer, setOdometer] = useState(vehicle.current_odometer_mi?.toString() ?? "");
+	const [geoData, setGeoData] = useState<GeocodeResult>();
 
 	const updateMutation = useUpdateVehicleMutation();
 	const isLoading = updateMutation.isPending;
@@ -41,6 +45,11 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 			setStatus(vehicle.status);
 			setNotes(vehicle.notes ?? "");
 			setOdometer(vehicle.current_odometer_mi?.toString() ?? "");
+			setGeoData(
+				vehicle.stored_at && vehicle.stored_at_coords
+					? { address: vehicle.stored_at, coords: vehicle.stored_at_coords }
+					: undefined,
+			);
 		}
 	}, [isOpen, vehicle]);
 
@@ -57,6 +66,8 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 			status,
 			notes: notes.trim() || null,
 			current_odometer_mi: odometer ? parseInt(odometer, 10) : null,
+			stored_at: geoData?.address ?? null,
+			stored_at_coords: geoData?.coords ?? null,
 		};
 		try {
 			await updateMutation.mutateAsync({ id: vehicle.id, data: input });
@@ -65,6 +76,11 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 			console.error("Failed to update vehicle:", err);
 		}
 	};
+
+	const handleChangeAddress = (result: GeocodeResult) => {
+		setGeoData({ address: result.address, coords: result.coords });
+	};
+	const handleClearAddress = () => setGeoData(undefined);
 
 	const isFormValid = useMemo(
 		() => !!(name.trim() && type.trim() && licensePlate.trim()),
@@ -195,6 +211,34 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 					</div>
 				</div>
 
+				<div
+					className="relative min-w-0"
+					style={{ zIndex: 50 }}
+				>
+					<label className={LABEL}>Stored at</label>
+					<div className="relative">
+						<AddressForm
+							mode={geoData ? "edit" : "create"}
+							originalValue={
+								geoData?.address || ""
+							}
+							originalCoords={geoData?.coords}
+							dropdownPosition="above"
+							handleChange={handleChangeAddress}
+							handleClear={handleClearAddress}
+						/>
+						{geoData && !isLoading && (
+							<button
+								type="button"
+								title="Remove"
+								onClick={handleClearAddress}
+								className="absolute right-2 top-1/2 -translate-y-1/2 z-10 text-text-tertiary hover:text-text-primary transition-colors"
+							>
+								<X size={16} />
+							</button>
+						)}
+					</div>
+				</div>
 				<div>
 					<label className={LABEL}>Notes</label>
 					<textarea
@@ -206,7 +250,7 @@ export default function EditVehicle({ isOpen, onClose, vehicle }: EditVehiclePro
 				</div>
 			</div>
 		),
-		[name, type, licensePlate, year, make, model, color, status, notes, odometer, isLoading]
+		[name, type, licensePlate, year, make, model, color, status, notes, odometer, isLoading, geoData,]
 	);
 
 	return (

@@ -1617,6 +1617,9 @@ model vehicle {
   current_odometer_mi Int?
   odometer_updated_at DateTime?
 
+  stored_at         String?
+  stored_at_coords  Json?
+
   stock_items         vehicle_stock_item[]
   current_technicians technician[]         @relation("CurrentVehicle")
   restock_records     vehicle_restock_record[] @relation("VehicleRestockRecords")

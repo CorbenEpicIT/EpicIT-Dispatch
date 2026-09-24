@@ -18,7 +18,8 @@ const techFindUnique = vi.fn();
 const openEntryFindFirst = vi.fn();
 const organizationFindFirst = vi.fn();
 const jobVisitFindFirst = vi.fn();
-const jobVisitUpdate = vi.fn();
+const jobVisitUpdateMany = vi.fn();
+const vehicleFindFirst = vi.fn();
 const shiftBreakFindFirst = vi.fn();
 const shiftFindFirst = vi.fn();
 const technicianUpdate = vi.fn();
@@ -33,7 +34,8 @@ function makeSdb() {
 		technician: { findUnique: techFindUnique },
 		visit_tech_time_entry: { findFirst: openEntryFindFirst },
 		organization: { findFirst: organizationFindFirst },
-		job_visit: { findFirst: jobVisitFindFirst, update: jobVisitUpdate },
+		job_visit: { findFirst: jobVisitFindFirst, updateMany: jobVisitUpdateMany },
+		vehicle: { findFirst: vehicleFindFirst },
 		$transaction: vi.fn((cb: (tx: typeof tx) => unknown) => cb(tx)),
 	};
 }
@@ -47,6 +49,7 @@ import { goOffline } from "../techniciansController.js";
 const TECH_ID = "tech-1";
 const ORG_ID = "org-1";
 const TECH_COORDS = { lat: 43.83, lon: -91.22 };
+const STORED_COORDS = { lat: 43.8755, lon: -91.2635 };
 const JOB_COORDS = { lat: 43.8124, lon: -91.2568 };
 const COMPLETED_VISIT = {
 	id: "visit-1",
@@ -56,7 +59,9 @@ const COMPLETED_VISIT = {
 describe("goOffline — return-leg mileage capture", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		techFindUnique.mockResolvedValue({ id: TECH_ID });
+		techFindUnique.mockResolvedValue({ id: TECH_ID, current_vehicle_id: "van-1" });
+		vehicleFindFirst.mockResolvedValue({ stored_at_coords: null });
+		jobVisitUpdateMany.mockResolvedValue({ count: 1 });
 		openEntryFindFirst.mockResolvedValue(null);
 		organizationFindFirst.mockResolvedValue({ timezone: "America/Chicago" });
 		shiftBreakFindFirst.mockResolvedValue(null);
@@ -72,20 +77,52 @@ describe("goOffline — return-leg mileage capture", () => {
 
 		expect(result.err).toBe("");
 		expect(mockFetchRouteDistanceMiles).toHaveBeenCalledWith(JOB_COORDS, TECH_COORDS);
-		expect(jobVisitUpdate).toHaveBeenCalledWith({
-			where: { id: COMPLETED_VISIT.id },
+		expect(jobVisitUpdateMany).toHaveBeenCalledWith({
+			where: { id: COMPLETED_VISIT.id, estimated_return_drive_miles: null },
 			data: { estimated_return_drive_miles: 2.9 },
 		});
 		expect(mockApplyOdometerIncrement).toHaveBeenCalledWith(expect.anything(), TECH_ID, 2.9);
 	});
 
-	it("is a no-op when techCoords is missing", async () => {
+	it("routes to the vehicle's stored location over techCoords", async () => {
+		vehicleFindFirst.mockResolvedValue({ stored_at_coords: STORED_COORDS });
+		jobVisitFindFirst.mockResolvedValue(COMPLETED_VISIT);
+		mockFetchRouteDistanceMiles.mockResolvedValue(6);
+
+		await goOffline(TECH_ID, ORG_ID, TECH_COORDS);
+
+		expect(mockFetchRouteDistanceMiles).toHaveBeenCalledWith(JOB_COORDS, STORED_COORDS);
+		expect(mockApplyOdometerIncrement).toHaveBeenCalledWith(expect.anything(), TECH_ID, 6);
+	});
+
+	it("still captures the return leg without techCoords when the vehicle has a stored location", async () => {
+		vehicleFindFirst.mockResolvedValue({ stored_at_coords: STORED_COORDS });
+		jobVisitFindFirst.mockResolvedValue(COMPLETED_VISIT);
+		mockFetchRouteDistanceMiles.mockResolvedValue(6);
+
+		await goOffline(TECH_ID, ORG_ID);
+
+		expect(mockFetchRouteDistanceMiles).toHaveBeenCalledWith(JOB_COORDS, STORED_COORDS);
+		expect(jobVisitUpdateMany).toHaveBeenCalled();
+	});
+
+	it("skips the odometer when another tech already claimed the return leg", async () => {
+		jobVisitFindFirst.mockResolvedValue(COMPLETED_VISIT);
+		mockFetchRouteDistanceMiles.mockResolvedValue(2.9);
+		jobVisitUpdateMany.mockResolvedValue({ count: 0 });
+
+		await goOffline(TECH_ID, ORG_ID, TECH_COORDS);
+
+		expect(mockApplyOdometerIncrement).not.toHaveBeenCalled();
+	});
+
+	it("is a no-op when neither techCoords nor a stored location exist", async () => {
 		const result = await goOffline(TECH_ID, ORG_ID);
 
 		expect(result.err).toBe("");
 		expect(jobVisitFindFirst).not.toHaveBeenCalled();
 		expect(mockFetchRouteDistanceMiles).not.toHaveBeenCalled();
-		expect(jobVisitUpdate).not.toHaveBeenCalled();
+		expect(jobVisitUpdateMany).not.toHaveBeenCalled();
 	});
 
 	it("is a no-op when there's no completed-today visit missing its return leg", async () => {
@@ -95,7 +132,7 @@ describe("goOffline — return-leg mileage capture", () => {
 
 		expect(result.err).toBe("");
 		expect(mockFetchRouteDistanceMiles).not.toHaveBeenCalled();
-		expect(jobVisitUpdate).not.toHaveBeenCalled();
+		expect(jobVisitUpdateMany).not.toHaveBeenCalled();
 		expect(mockApplyOdometerIncrement).not.toHaveBeenCalled();
 	});
 });
