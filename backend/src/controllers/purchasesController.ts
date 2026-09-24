@@ -39,7 +39,7 @@ const LINE_SELECT = {
 	received_at: true,
 	allocation_id: true,
 	sort_order: true,
-	inventory_item: { select: { id: true, name: true, sku: true, unit: true, barcode: true } },
+	inventory_item: { select: { id: true, name: true, sku: true, unit: true, barcode: true, location: true } },
 	disposition_vehicle: { select: { id: true, name: true } },
 } as const;
 
@@ -902,10 +902,20 @@ export async function receivePurchase(
 		}
 		await assertDispositionVehiclesInOrg(db, orgId, [...vehicleOverrideById.values()]);
 
+		const locationLines = parsed.lines.filter((l) => l.location !== undefined);
+		const badLocation = locationLines.filter((l) => {
+			const line = linesById.get(l.id)!;
+			const vehicleId = vehicleOverrideById.has(l.id) ? vehicleOverrideById.get(l.id) : line.disposition_vehicle_id;
+			return line.disposition !== "receive" || !line.inventory_item_id || vehicleId;
+		});
+		if (badLocation.length > 0) {
+			return { err: "Validation failed: a location only applies to a warehouse receive of an inventory item" };
+		}
+
 		const dispatcherId = context?.dispatcherId ?? "";
 		const touchedIds = [...incrementById.keys()].sort();
 
-		const { purchase: refreshed, warnings } = await sdb.$transaction(async (tx) => {
+		const { purchase: refreshed, warnings, locationChanges } = await sdb.$transaction(async (tx) => {
 			// Locked before re-checking the over-receipt guard: without this, two
 			// concurrent receives on the same line could each read the same
 			// pre-increment total, each pass their own check, and together push it
@@ -983,6 +993,18 @@ export async function receivePurchase(
 				});
 			}
 
+			const locationChanges: { itemId: string; old: string; new: string }[] = [];
+			for (const l of locationLines) {
+				const itemId = linesById.get(l.id)!.inventory_item_id!;
+				const item = await tx.inventory_item.findUniqueOrThrow({
+					where: { id: itemId },
+					select: { location: true },
+				});
+				if (item.location === l.location) continue;
+				await tx.inventory_item.update({ where: { id: itemId }, data: { location: l.location } });
+				locationChanges.push({ itemId, old: item.location, new: l.location! });
+			}
+
 			// A line with no disposition was never asked to be received, so it
 			// can't block the purchase from reaching "received".
 			const updatedLines = await tx.purchase_line.findMany({ where: { purchase_id: purchaseId } });
@@ -1012,10 +1034,22 @@ export async function receivePurchase(
 			return {
 				purchase: await tx.purchase.findUniqueOrThrow({ where: { id: purchaseId }, select: PURCHASE_SELECT }),
 				warnings,
+				locationChanges,
 			};
 		});
 
 		await logPurchaseActivity(orgId, "purchase", purchaseId, "received", "updated", context);
+		for (const c of locationChanges) {
+			await logActivity({
+				event_type: "inventory_item.updated",
+				action: "updated",
+				entity_type: "inventory_item",
+				entity_id: c.itemId,
+				organization_id: orgId,
+				...actorOf(context),
+				changes: { location: { old: c.old, new: c.new } },
+			});
+		}
 
 		return { purchase: refreshed, warnings };
 	} catch (err) {

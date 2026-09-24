@@ -126,5 +126,7 @@ export const receivePurchaseSchema = z.object({
     id: z.string().uuid(),
     quantity_received: positiveMoney("Quantity received"),
     disposition_vehicle_id: z.string().uuid().nullable().optional(),
+    // Warehouse bin/shelf; overwrites the linked item's `location`.
+    location: z.string().trim().min(1).max(255).optional(),
   })).min(1, "At least one line must be received"),
 });
