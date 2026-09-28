@@ -1,10 +1,12 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 
-// Credential / token columns that must never leave the server by default.
-// Applied globally (including nested relation reads such as
+// Columns that must never leave the server by default: credentials, tokens, and
+// technician pay. Applied globally (including nested relation reads such as
 // `visit_techs: { include: { tech: true } }`); the few code paths that
-// genuinely need a value opt back in per query with `omit: { <field>: false }`.
+// genuinely need a value opt back in per query, either with an explicit
+// `select` naming the field (pay-rate reads) or `omit: { <field>: false }`
+// (credential checks).
 export const SECRET_FIELD_OMIT = {
 	dispatcher: {
 		password: true,
@@ -16,6 +18,7 @@ export const SECRET_FIELD_OMIT = {
 		password: true,
 		password_reset_token: true,
 		password_reset_token_expires_at: true,
+		hourly_rate: true,
 	},
 } as const;
 

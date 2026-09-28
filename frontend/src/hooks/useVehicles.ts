@@ -5,18 +5,27 @@ import { qk, invalidate } from "../lib/queryKeys";
 
 // ── Vehicle queries ────────────────────────────────────────────────────────────
 
-export const useVehiclesQuery = (status?: string): UseQueryResult<Vehicle[], Error> => {
+export const useVehiclesQuery = (
+	status?: string,
+	options?: { enabled?: boolean },
+): UseQueryResult<Vehicle[], Error> => {
 	return useQuery({
 		queryKey: qk.vehicles.list(status),
 		queryFn: () => vehiclesApi.getVehicles(status),
+		enabled: options?.enabled ?? true,
 		staleTime: 30_000,
 	});
 };
 
-export const useVehicleOdometer = (id: string | null | undefined): number | null => {
-	const { data } = useVehiclesQuery();
-	return data?.find((v) => v.id === id)?.current_odometer_mi ?? null;
+// One vehicle off the cached list rather than a detail fetch: the list already
+// carries make/model/plate and current_technicians, and every caller shares it.
+export const useVehicleRecord = (id: string | null | undefined): Vehicle | null => {
+	const { data } = useVehiclesQuery(undefined, { enabled: !!id });
+	return data?.find((v) => v.id === id) ?? null;
 };
+
+export const useVehicleOdometer = (id: string | null | undefined): number | null =>
+	useVehicleRecord(id)?.current_odometer_mi ?? null;
 
 export const useVehicleMaintenanceQuery = (id: string | null | undefined): UseQueryResult<VehicleMaintenanceRecord[], Error> => {
 	return useQuery({

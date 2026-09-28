@@ -106,10 +106,12 @@ export const useMileageReportQuery = (
 export const useTimesheetsReportQuery = (
 	startDate?: string,
 	endDate?: string,
+	options?: { enabled?: boolean },
 ): UseQueryResult<TimesheetReportEntry[], Error> => {
 	return useQuery({
 		queryKey: ["reports", "timesheets", startDate, endDate],
 		queryFn: () => reportsApi.getTimesheetsReport(startDate, endDate),
+		enabled: options?.enabled ?? true,
 	});
 };
 
