@@ -90,7 +90,7 @@ function SummaryRow({ label, value }: { label: string; value: ReactNode }) {
 
 export default function PurchaseDetailsPage () {
     const { purchaseId } = useParams<{ purchaseId: string }>();
-    const _navigate = useNavigate();
+    const navigate = useNavigate();
     const [showActionsMenu, setShowActionsMenu] = useState(false);
     const [confirmCancel, setConfirmCancel] = useState(false);
     const [isPdfLoading, setIsPdfLoading] = useState(false);
@@ -144,6 +144,7 @@ export default function PurchaseDetailsPage () {
                         : "—";
             return {
                 id: l.id,
+                _itemId: l.inventory_item_id,
                 item: l.description,
                 quantity: l.quantity,
                 unitPrice: formatCurrency(Number(l.unit_price)),
@@ -352,6 +353,7 @@ export default function PurchaseDetailsPage () {
                                         </span>
                                     ),
                             }}
+                            onRowClick={(row) => row._itemId && navigate(`/dispatch/inventory/items/${row._itemId as string}`)}
                         />
                         {purchase && (
                             <dl className="space-y-1 border-t border-border-subtle px-4 py-3 text-sm">
