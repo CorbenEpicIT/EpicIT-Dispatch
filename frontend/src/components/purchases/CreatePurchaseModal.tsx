@@ -16,6 +16,7 @@ import { type PurchaseLineDisposition } from "../../types/purchases";
 import type { SupplierCapture } from "../../types/suppliers";
 import { formatCurrency, formatDateTime } from "../../util/util";
 import { Plus, Trash2, X } from "lucide-react";
+import { usePermission } from "../../hooks/usePermission";
 
 const INPUT =
     "border border-border-input px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm focus:border-primary focus:outline-none transition-colors min-w-0 disabled:opacity-60";
@@ -77,6 +78,9 @@ function PurchaseLineRow({ draft, jobs, vehicles, onChange, onRemove, onRequestC
         return () => clearTimeout(t);
     }, [draft.description]);
     const { data: catalogResults } = useCatalogSearchQuery({ q: debouncedDescription || undefined });
+
+    const CREATE = usePermission("manage_inventory");
+
     const catalogExactMatch = useMemo(() => {
         const q = debouncedDescription.trim().toLowerCase();
         if (!q) return undefined;
@@ -85,7 +89,7 @@ function PurchaseLineRow({ draft, jobs, vehicles, onChange, onRemove, onRequestC
     // "+ Create item …" mirrors the supplier field's create option
     const catalogOptions = useMemo<FilterableOption[]>(() => {
         const base = (catalogResults ?? []).map((t) => ({ id: t.id, label: t.name, sublabel: t.sku ?? undefined }));
-        if (draft.description.trim() && !catalogExactMatch) {
+        if (draft.description.trim() && !catalogExactMatch && CREATE) {
             return [{ id: CREATE_ITEM_OPTION_ID, label: `+ Create item "${draft.description.trim()}"` }, ...base];
         }
         return base;
@@ -290,6 +294,9 @@ export default function CreatePurchaseModal ({ isModalOpen, setIsModalOpen, crea
     const { data: vehiclesData } = useVehiclesQuery();
     const vehicles = useMemo(() => vehiclesData ?? [], [vehiclesData]);
 
+    // items and suppilers both use manage_inventory
+    const CREATE = usePermission("manage_inventory");
+
     // Suggests known supplier names on the free-text vendor field too — separate
     // from supplier_id below, which is what actually links the record.
     const { data: suppliersData } = useSuppliers();
@@ -300,7 +307,7 @@ export default function CreatePurchaseModal ({ isModalOpen, setIsModalOpen, crea
     }, [suppliersData, vendorName]);
     const vendorOptions = useMemo<FilterableOption[]>(() => {
         const base = (suppliersData ?? []).map((s) => ({ id: s.id, label: s.name, sublabel: s.account_number ?? undefined }));
-        if (vendorName.trim() && !vendorExactMatch) {
+        if (vendorName.trim() && !vendorExactMatch && CREATE) {
             return [{ id: CREATE_SUPPLIER_OPTION_ID, label: `+ Create supplier "${vendorName.trim()}"` }, ...base];
         }
         return base;
@@ -329,7 +336,7 @@ export default function CreatePurchaseModal ({ isModalOpen, setIsModalOpen, crea
         const base = (suppliersData ?? [])
             .filter((s) => !q || s.name.toLowerCase().includes(q))
             .map((s) => ({ id: s.id, label: s.name, sublabel: s.account_number ?? undefined }));
-        if (supplierQuery.trim() && !supplierExactMatch) {
+        if (supplierQuery.trim() && !supplierExactMatch && CREATE) {
             return [{ id: CREATE_SUPPLIER_OPTION_ID, label: `+ Create supplier "${supplierQuery.trim()}"` }, ...base];
         }
         return base;

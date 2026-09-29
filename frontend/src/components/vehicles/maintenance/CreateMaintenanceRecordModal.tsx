@@ -20,6 +20,7 @@ import type { SupplierCapture } from "../../../types/suppliers";
 import SupplierFormModal from "../../suppliers/SupplierFormModal";
 import CreatePurchaseModal from "../../purchases/CreatePurchaseModal";
 import { useCreatePurchaseMutation } from "../../../hooks/usePurchases";
+import { usePermission } from "../../../hooks/usePermission";
  
 const INPUT = "border border-border-input px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm focus:border-primary focus:outline-none transition-colors min-w-0 disabled:opacity-60";
 const LABEL = "block mb-0.5 text-xs font-medium text-text-tertiary uppercase tracking-wider";
@@ -70,6 +71,10 @@ export default function CreateMaintenanceRecordModal ({
     const [coveredReminderIds, setCoveredReminderIds] = useState<Set<string>>(
         () => new Set(preselectedReminderId ? [preselectedReminderId] : [])
     );
+
+    const CREATE_VENDOR = usePermission("manage_inventory");
+    const CREATE_PURCHASE = usePermission("manage_purchases");
+
     const { data: reminders } = useVehicleMaintenanceReminderQuery(vehicleId);
     const { data: records } = useVehicleMaintenanceQuery(vehicleId);
     const currentOdometerMi = useVehicleOdometer(vehicleId);
@@ -99,7 +104,7 @@ export default function CreateMaintenanceRecordModal ({
                 label: `${p.reference ? `#${p.reference} - ` : ""}${p.description} (${p.vendor_name ?? "Unknown vendor"})`,
                 sublabel: formatCurrency(p.cost),
             }));
-            if (purchaseQuery.trim()) {
+            if (purchaseQuery.trim() && CREATE_PURCHASE) {
                 return [{ id: CREATE_PURCHASE_OPTION_ID, label: `+ Create purchase "${purchaseQuery.trim()}"` }, ...base];
             }
             return base;
@@ -123,7 +128,7 @@ export default function CreateMaintenanceRecordModal ({
     }, [suppliersData, vendor]);
     const vendorOptions = useMemo<FilterableOption[]>(() => {
         const base = (suppliersData ?? []).map((s) => ({ id: s.id, label: s.name, sublabel: s.account_number ?? undefined }));
-        if (vendor.trim() && !vendorExactMatch) {
+        if (vendor.trim() && !vendorExactMatch && CREATE_VENDOR) {
             return [{ id: CREATE_SUPPLIER_OPTION_ID, label: `+ Create supplier "${vendor.trim()}"` }, ...base];
         }
         return base;

@@ -22,6 +22,7 @@ import { type PurchaseLineDisposition, type Purchase } from "../../types/purchas
 import type { SupplierCapture } from "../../types/suppliers";
 import { formatCurrency, formatDateTime } from "../../util/util";
 import { Plus, Trash2, X } from "lucide-react";
+import { usePermission } from "../../hooks/usePermission";
 
 const INPUT =
     "border border-border-input px-2.5 h-[34px] w-full rounded bg-base text-text-primary text-sm focus:border-primary focus:outline-none transition-colors min-w-0 disabled:opacity-60";
@@ -297,6 +298,9 @@ export default function EditPurchaseModal ({ isModalOpen, setIsModalOpen, purcha
 
     const [isLoading, setIsLoading] = useState(false);
 
+    const CREATE = usePermission("manage_inventory");
+
+
     useEffect(() => {
         if (!isModalOpen || !purchase) return;
         setVendorName(purchase.vendor_name ?? "");
@@ -338,7 +342,7 @@ export default function EditPurchaseModal ({ isModalOpen, setIsModalOpen, purcha
         const base = (suppliersData ?? [])
             .filter((s) => !q || s.name.toLowerCase().includes(q))
             .map((s) => ({ id: s.id, label: s.name, sublabel: s.account_number ?? undefined }));
-        if (supplierQuery.trim() && !supplierExactMatch) {
+        if (supplierQuery.trim() && !supplierExactMatch && CREATE) {
             return [{ id: CREATE_SUPPLIER_OPTION_ID, label: `+ Create supplier "${supplierQuery.trim()}"` }, ...base];
         }
         return base;
