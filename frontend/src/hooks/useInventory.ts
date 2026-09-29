@@ -511,6 +511,7 @@ export const useApproveItemMutation = () => {
 			cost?: number;
 			unit?: string;
 			low_stock_threshold?: number | null;
+			location?: string | null;
 		}) => orgApi.approveItem(itemId, body),
 		onSuccess: async () => {
 			await qc.invalidateQueries({ queryKey: qk.inventory.provisional });

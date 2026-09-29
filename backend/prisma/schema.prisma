@@ -1465,7 +1465,10 @@ model inventory_item {
   organization    organization @relation(fields: [organization_id], references: [id])
   name        String
   description String @db.Text
-  location    String
+  // Optional: a purchase order can land on the receiving floor before anyone
+  // has decided where the item lives. Not stock-bearing — this is a findability
+  // label, unrelated to stock_location_type.
+  location    String?
   // Fractional on purpose: the unit catalog sells ft / m / lb / kg / gal / L, so
   // 12.5 ft of line set is an ordinary warehouse level. Matches the precision
   // every other quantity in the ledger already uses (stock_movement.qty,

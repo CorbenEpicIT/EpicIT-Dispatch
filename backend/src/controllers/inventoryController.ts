@@ -19,6 +19,7 @@ import {
 	valueHistoryQuerySchema,
 	priceHistoryQuerySchema,
 	movementsQuerySchema,
+	locationField,
 	type TrendBucket,
 } from "../lib/validate/inventory.js";
 import { isStorableStockQty, STOCK_QTY_MESSAGE } from "../lib/validate/shared.js";
@@ -415,7 +416,7 @@ export const createInventoryItem = async (
 					origin,
 					name: parsed.name,
 					description: parsed.description,
-					location: parsed.location,
+					location: parsed.location ?? null,
 					quantity: 0, // recordMovements sets the initial qty below
 					unit: parsed.unit,
 					unit_price: parsed.unit_price ?? null,
@@ -1509,7 +1510,6 @@ export const importInventoryFromFile = async (
 		const location = str(row["location"] ?? row["location*"]);
 
 		if (!name) { skipped.push({ row: rowNum, reason: "Missing required field: name" }); continue; }
-		if (!location) { skipped.push({ row: rowNum, reason: "Missing required field: location" }); continue; }
 
 		const quantityResult = toStockQty(row["quantity"]);
 		if (!quantityResult.ok) {
@@ -1588,7 +1588,7 @@ export const exportLowStockToXlsx = async (orgId: string): Promise<Buffer> => {
 	const rows = items.map((item) => ({
 		Name: item.name,
 		SKU: item.sku ?? "",
-		Location: item.location,
+		Location: item.location ?? "",
 		Quantity: item.quantity,
 		Unit: (item as Record<string, unknown>)["unit"] ?? "each",
 		"Low Stock Threshold": item.low_stock_threshold ?? "",
@@ -4944,7 +4944,6 @@ export async function createProvisionalItemForLine(
 				organization_id: orgId,
 				name: parsed.name,
 				description: "",
-				location: "",
 				quantity: 0,
 				unit: normalizeUnitCode(parsed.unit) ?? DEFAULT_UNIT_CODE,
 				unit_price: parsed.unit_price ?? null,
@@ -5016,6 +5015,10 @@ const approveProvisionalSchema = z.object({
 	cost: z.number().min(0).optional(),
 	unit: z.string().trim().max(40).optional(),
 	low_stock_threshold: z.number().min(0).nullable().optional(),
+	// Adoption is the first moment anyone knows what the item actually is, so
+	// it is a natural place to give it a home. Still optional — plenty of orgs
+	// never assign one.
+	location: locationField,
 });
 
 /**
@@ -5056,6 +5059,7 @@ export async function approveProvisionalItem(
 					...(parsed.low_stock_threshold !== undefined
 						? { low_stock_threshold: parsed.low_stock_threshold }
 						: {}),
+					...(parsed.location !== undefined ? { location: parsed.location } : {}),
 				},
 			});
 			if (claimed.count === 0) throw new Error("Provisional item not found");
@@ -5229,7 +5233,7 @@ export async function mergeProvisionalItem(
 
 export const getInventoryImportTemplate = (): Buffer => {
 	const headers = [
-		"name*", "sku", "description", "location*",
+		"name*", "sku", "description", "location",
 		"quantity", "unit_price", "cost", "low_stock_threshold", "alert_email", "tags",
 	];
 	const example = [

@@ -118,7 +118,6 @@ export async function importQBItem(orgId: string, qbItemId: string, actor?: Acto
                     name: qbItem.Name,
                     origin: "import",
                     description: qbItem.Description ?? "",
-                    location: "",
                     quantity: 0, // recordMovements sets the opening qty below
                     // No unit-of-measure field on the QBO Item — leave `unit` at its default rather than guess.
                     unit_price: qbItem.UnitPrice ?? null,

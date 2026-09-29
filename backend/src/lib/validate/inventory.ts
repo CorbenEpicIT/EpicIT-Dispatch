@@ -37,6 +37,20 @@ const barcodeField = z
 		return trimmed === "" ? null : trimmed;
 	});
 
+// Optional, and "" / whitespace collapse to null so there is exactly one
+// representation of "no location". Three creation paths wrote "" to satisfy the
+// old NOT NULL constraint; the migration cleared those and this keeps them gone.
+export const locationField = z
+	.string()
+	.max(255)
+	.nullable()
+	.optional()
+	.transform((v) => {
+		if (v == null) return v;
+		const trimmed = v.trim();
+		return trimmed === "" ? null : trimmed;
+	});
+
 export const updateThresholdSchema = z.object({
     low_stock_threshold: stockQty(z.number().min(0, "Threshold must not be negative")).nullable().optional(),
 });
@@ -47,7 +61,7 @@ export const createInventoryItemSchema = z
 	.object({
 		name: z.string().min(1, "Name is required").max(255),
 		description: z.string().max(5000).default(""),
-		location: z.string().min(1, "Location is required").max(255),
+		location: locationField,
 		quantity: stockQty(z.number().min(0, "Quantity must not be negative")).default(0),
 		unit: unitField.default("each"),
 		unit_price: z.number().min(0).nullable().optional(),
@@ -86,7 +100,7 @@ export type CreateInventoryItemInput = z.infer<typeof createInventoryItemSchema>
 export const updateInventoryItemSchema = z.object({
 	name: z.string().min(1).max(255).optional(),
 	description: z.string().max(5000).optional(),
-	location: z.string().min(1).max(255).optional(),
+	location: locationField,
 	// quantity intentionally omitted — stock changes go through adjustInventoryStock → recordMovements
 	unit: unitField.optional(),
 	// Changing `unit` while stock is on hand re-denominates that stock (250 each

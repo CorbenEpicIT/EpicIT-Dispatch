@@ -14,6 +14,7 @@ import {
 import { unitDef } from "../../lib/units";
 import ImageCarousel from "../../components/inventory/ImageCarousel";
 import { TrackingBadges } from "../../components/inventory/TrackingBadges";
+import LocationValue from "../../components/inventory/LocationValue";
 import AddToLabelQueueButton from "../../components/inventory/labels/AddToLabelQueueButton";
 import LabelQueueButton from "../../components/inventory/labels/LabelQueueButton";
 import LabelQueueToast from "../../components/inventory/labels/LabelQueueToast";
@@ -280,7 +281,7 @@ export default function InventoryItemDetailPage() {
 					overviewLayout === "split" ? "lg:grid-cols-4" : ""
 				}`}
 			>
-				<Field label="Location" value={item.location} />
+				<Field label="Location" value={<LocationValue location={item.location} />} />
 				<Field label="Category" value={item.category} />
 				{/* The configured value, so this one DOES name the unit — but as
 				    its catalog label ("Each", "Feet"), not the stored code. */}

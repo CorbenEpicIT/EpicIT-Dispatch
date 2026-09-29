@@ -39,7 +39,9 @@ const LINE_SELECT = {
 	received_at: true,
 	allocation_id: true,
 	sort_order: true,
-	inventory_item: { select: { id: true, name: true, sku: true, unit: true, barcode: true, location: true } },
+	inventory_item: {
+		select: { id: true, name: true, sku: true, unit: true, barcode: true, location: true },
+	},
 	disposition_vehicle: { select: { id: true, name: true } },
 } as const;
 
@@ -883,6 +885,12 @@ export async function receivePurchase(
 				.filter((l) => l.disposition_vehicle_id !== undefined)
 				.map((l) => [l.id, l.disposition_vehicle_id ?? null]),
 		);
+		// The schema already collapsed blank to null. Null is "not supplied" rather
+		// than a request to clear — the receive modal has no clearing affordance, so
+		// a blank box can only mean the receiver left it alone.
+		const locationById = new Map(
+			parsed.lines.flatMap((l) => (l.location ? [[l.id, l.location] as const] : [])),
+		);
 
 		const notReceivable = purchase.lines
 			.filter((l) => incrementById.has(l.id) && l.disposition !== "receive" && l.disposition !== "non_stock")
@@ -915,7 +923,7 @@ export async function receivePurchase(
 		const dispatcherId = context?.dispatcherId ?? "";
 		const touchedIds = [...incrementById.keys()].sort();
 
-		const { purchase: refreshed, warnings, locationChanges } = await sdb.$transaction(async (tx) => {
+		const { purchase: refreshed, warnings, assignedLocations } = await sdb.$transaction(async (tx) => {
 			// Locked before re-checking the over-receipt guard: without this, two
 			// concurrent receives on the same line could each read the same
 			// pre-increment total, each pass their own check, and together push it
@@ -958,6 +966,23 @@ export async function receivePurchase(
 						: null,
 				};
 			});
+
+			// Only a line whose stock lands in the warehouse can give the item a home:
+			// a truck-bound or job-costed line never touched a shelf, so a location
+			// typed against it describes nothing. `location: null` lives in the WHERE,
+			// not in a prior read — an item that already has a home matches zero rows
+			// and keeps it, atomically with the write rather than racing another receive.
+			const assignedLocations: { itemId: string; location: string }[] = [];
+			for (const l of receivingLines) {
+				const requested = locationById.get(l.id);
+				if (!requested || !l.inventory_item_id) continue;
+				if (l.disposition !== "receive" || l.disposition_vehicle_id) continue;
+				const { count } = await tx.inventory_item.updateMany({
+					where: { id: l.inventory_item_id, organization_id: orgId, location: null },
+					data: { location: requested },
+				});
+				if (count > 0) assignedLocations.push({ itemId: l.inventory_item_id, location: requested });
+			}
 
 			const stockWarnings = await applyRecieveStockEffect(
 				tx as unknown as Prisma.TransactionClient,
@@ -1002,7 +1027,7 @@ export async function receivePurchase(
 				});
 				if (item.location === l.location) continue;
 				await tx.inventory_item.update({ where: { id: itemId }, data: { location: l.location } });
-				locationChanges.push({ itemId, old: item.location, new: l.location! });
+				locationChanges.push({ itemId, old: item.location ?? "", new: l.location! });
 			}
 
 			// A line with no disposition was never asked to be received, so it
@@ -1034,20 +1059,24 @@ export async function receivePurchase(
 			return {
 				purchase: await tx.purchase.findUniqueOrThrow({ where: { id: purchaseId }, select: PURCHASE_SELECT }),
 				warnings,
-				locationChanges,
+				assignedLocations,
 			};
 		});
 
 		await logPurchaseActivity(orgId, "purchase", purchaseId, "received", "updated", context);
-		for (const c of locationChanges) {
+		// Logged per item, after commit, so the item's own history shows where its
+		// home came from — `purchase.received` only records what was requested,
+		// which the null guard may have declined.
+		for (const { itemId, location } of assignedLocations) {
 			await logActivity({
 				event_type: "inventory_item.updated",
 				action: "updated",
 				entity_type: "inventory_item",
-				entity_id: c.itemId,
+				entity_id: itemId,
 				organization_id: orgId,
 				...actorOf(context),
-				changes: { location: { old: c.old, new: c.new } },
+				reason: `Location set on receipt of ${purchase.purchase_number}`,
+				changes: { location: { old: null, new: location } },
 			});
 		}
 

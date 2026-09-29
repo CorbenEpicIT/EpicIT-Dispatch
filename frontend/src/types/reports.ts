@@ -315,7 +315,7 @@ export interface InventoryReportRow {
 	qtyUsed: number | null;
 	qtyUsedBasis: UnitBasis;
 	stockStatus: StockStatus;
-	location: string;
+	location: string | null;
 	tags: { label: string }[];
 	altIds: string[];
 	updatedAt: string;
