@@ -49,9 +49,7 @@ export default function ProfitAndLossPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Profit & Loss">
-				<RefreshReportsButton />
-			</PageHeader>
+			<PageHeader title="Profit & Loss" />
 
 			<PageControls
 				className="mb-4"
@@ -79,6 +77,7 @@ export default function ProfitAndLossPage() {
 							mappedCount={mappedCount}
 						/>
 						<DateRangeFilter paramKey="period" />
+						<RefreshReportsButton />
 					</>
 				}
 			/>

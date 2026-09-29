@@ -134,9 +134,7 @@ export default function QuoteFunnelPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Quote Conversion">
-				<RefreshReportsButton />
-			</PageHeader>
+			<PageHeader title="Quote Conversion" />
 
 			<div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
 				{stats.map((card) => (
@@ -218,6 +216,7 @@ export default function QuoteFunnelPage() {
 							disabled={total === 0}
 						/>
 						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
+						<RefreshReportsButton />
 					</>
 				}
 			/>

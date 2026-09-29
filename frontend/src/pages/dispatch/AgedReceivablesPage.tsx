@@ -119,9 +119,7 @@ export default function AgedReceivablesPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Aged Receivables">
-				<RefreshReportsButton />
-			</PageHeader>
+			<PageHeader title="Aged Receivables" />
 
 			{summaryChart.data && (
 				<div className="mb-4 h-72">
@@ -154,6 +152,7 @@ export default function AgedReceivablesPage() {
 							disabled={total === 0}
 						/>
 						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
+						<RefreshReportsButton />
 					</>
 				}
 			/>

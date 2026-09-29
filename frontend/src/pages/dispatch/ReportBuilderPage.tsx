@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, FileBarChart, Loader2, RefreshCcw, Save, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, FileBarChart, Loader2, Save, SlidersHorizontal } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AdaptableTable from "../../components/AdaptableTable";
 import PageHeader from "../../components/ui/PageHeader";
+import RefreshReportsButton from "../../components/reports/RefreshReportButton";
 import ReportCustomizeDrawer, {
 	type AppliedReportConfig,
 	type SortDir,
@@ -176,8 +177,7 @@ function Builder({ source, name, reportId, initialConfig }: BuilderProps) {
 		[resolvedRange, search, conditions, join, sortKey, sortDir, page, pageSize, source],
 	);
 
-	const { rows, total, hasMore, isLoading, isFetching, error, refetch } =
-		source.useRows(queryParams);
+	const { rows, total, hasMore, isLoading, isFetching, error } = source.useRows(queryParams);
 
 	// Reset to the first page whenever any filter changes
 	const filterKey = JSON.stringify([
@@ -288,13 +288,6 @@ function Builder({ source, name, reportId, initialConfig }: BuilderProps) {
 					</Link>
 				}
 			>
-				<button
-					onClick={refetch}
-					disabled={isFetching}
-					className="flex items-center gap-1.5 h-9 px-3 rounded-md border border-border bg-surface text-sm text-text-tertiary hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-				>
-					<RefreshCcw size={14} className={isFetching ? "animate-spin" : ""} /> Refresh
-				</button>
 				<ExportExcelButton
 					onExport={() =>
 						exportReportServer({
@@ -313,6 +306,7 @@ function Builder({ source, name, reportId, initialConfig }: BuilderProps) {
 					<SlidersHorizontal size={14} />
 					{activeConditionCount > 0 ? `Customize · ${activeConditionCount}` : "Customize"}
 				</button>
+				<RefreshReportsButton />
 				<button
 					onClick={handleSave}
 					disabled={isSaving}

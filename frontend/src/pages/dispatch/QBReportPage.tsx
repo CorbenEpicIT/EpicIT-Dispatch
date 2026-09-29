@@ -69,9 +69,7 @@ export default function QBReportPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title={meta.label}>
-				<RefreshReportsButton />
-			</PageHeader>
+			<PageHeader title={meta.label} />
 
 			<PageControls
 				className="mb-4"
@@ -101,6 +99,7 @@ export default function QBReportPage() {
 							/>
 						)}
 						<DateRangeFilter paramKey="period" />
+						<RefreshReportsButton />
 					</>
 				}
 			/>

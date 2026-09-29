@@ -212,9 +212,7 @@ export default function MileageReportPage() {
 						</button>
 					) : undefined
 				}
-			>
-				<RefreshReportsButton />
-			</PageHeader>
+			/>
 
 			{/* Summary Cards */}
 			<div className="grid grid-cols-3 gap-3 mb-4">
@@ -302,17 +300,20 @@ export default function MileageReportPage() {
 				}
 				middle={<DateRangeFilter paramKey="date" />}
 				right={
-					<ExportExcelButton
-						onExport={() =>
-							exportReport({
-								filename: datedFilename("mileage-report"),
-								sheetName: "Mileage",
-								columns: exportColumns,
-								rows: exportRows,
-							})
-						}
-						disabled={exportRows.length === 0}
-					/>
+					<>
+						<ExportExcelButton
+							onExport={() =>
+								exportReport({
+									filename: datedFilename("mileage-report"),
+									sheetName: "Mileage",
+									columns: exportColumns,
+									rows: exportRows,
+								})
+							}
+							disabled={exportRows.length === 0}
+						/>
+						<RefreshReportsButton />
+					</>
 				}
 			/>
 

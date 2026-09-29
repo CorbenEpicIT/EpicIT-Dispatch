@@ -104,9 +104,7 @@ export default function ClientRetentionPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Client Retention">
-				<RefreshReportsButton />
-			</PageHeader>
+			<PageHeader title="Client Retention" />
 
 			<PageControls
 				className="mb-4"
@@ -145,6 +143,7 @@ export default function ClientRetentionPage() {
 							disabled={total === 0}
 						/>
 						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
+						<RefreshReportsButton />
 					</>
 				}
 			/>

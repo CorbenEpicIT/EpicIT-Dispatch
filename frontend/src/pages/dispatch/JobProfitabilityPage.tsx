@@ -206,9 +206,7 @@ export default function JobProfitabilityPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Job Profitability">
-				<RefreshReportsButton />
-			</PageHeader>
+			<PageHeader title="Job Profitability" />
 
 			<div className="flex items-center gap-1 mb-4 w-fit rounded-md border border-border p-0.5">
 				<button
@@ -277,6 +275,7 @@ export default function JobProfitabilityPage() {
 							disabled={total === 0}
 						/>
 						<ColumnsButton columns={cols} hidden={hidden} onToggle={toggle} onReset={reset} />
+						<RefreshReportsButton />
 					</>
 				}
 			/>

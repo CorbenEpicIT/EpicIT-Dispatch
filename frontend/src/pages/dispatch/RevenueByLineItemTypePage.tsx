@@ -96,9 +96,7 @@ export default function RevenueByLineItemTypePage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Revenue by Line Item Type">
-				<RefreshReportsButton />
-			</PageHeader>
+			<PageHeader title="Revenue by Line Item Type" />
 
 			<div className="grid grid-cols-2 gap-3 mb-4">
 				{stats.map((card) => (
@@ -130,6 +128,7 @@ export default function RevenueByLineItemTypePage() {
 							disabled={(summary?.totalRevenue ?? 0) === 0}
 						/>
 						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
+						<RefreshReportsButton />
 					</>
 				}
 			/>

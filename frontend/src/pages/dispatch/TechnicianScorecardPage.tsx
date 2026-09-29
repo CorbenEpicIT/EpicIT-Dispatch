@@ -434,7 +434,6 @@ export default function TechnicianScorecardPage() {
 						)}
 					</>
 				)}
-				<RefreshReportsButton />
 			</div>
 
 			<PageControls
@@ -497,6 +496,7 @@ export default function TechnicianScorecardPage() {
 							onToggle={toggle}
 							onReset={reset}
 						/>
+						<RefreshReportsButton />
 					</>
 				}
 			/>

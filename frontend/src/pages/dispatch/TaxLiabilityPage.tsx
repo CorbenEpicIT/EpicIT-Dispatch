@@ -117,9 +117,7 @@ export default function TaxLiabilityPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Tax Liability">
-				<RefreshReportsButton />
-			</PageHeader>
+			<PageHeader title="Tax Liability" />
 
 			<PageControls
 				className="mb-4"
@@ -147,6 +145,7 @@ export default function TaxLiabilityPage() {
 							disabled={total === 0}
 						/>
 						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
+						<RefreshReportsButton />
 					</>
 				}
 			/>

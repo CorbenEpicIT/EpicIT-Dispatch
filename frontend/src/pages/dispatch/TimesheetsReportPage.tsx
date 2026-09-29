@@ -212,9 +212,7 @@ export default function TimesheetsReportPage() {
 						</button>
 					) : undefined
 				}
-			>
-				<RefreshReportsButton />
-			</PageHeader>
+			/>
 
 			<div className="grid grid-cols-3 gap-3 mb-4">
 				{stats.map((card) => (
@@ -263,6 +261,7 @@ export default function TimesheetsReportPage() {
 							onToggle={toggle}
 							onReset={reset}
 						/>
+						<RefreshReportsButton />
 					</>
 				}
 			/>

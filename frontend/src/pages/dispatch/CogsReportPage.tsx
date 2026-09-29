@@ -188,9 +188,7 @@ export default function CogsReportPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Cost of Goods Sold">
-				<RefreshReportsButton />
-			</PageHeader>
+			<PageHeader title="Cost of Goods Sold" />
 
 			<div className="flex items-center gap-1 mb-4 w-fit rounded-md border border-border p-0.5">
 				<button
@@ -278,6 +276,7 @@ export default function CogsReportPage() {
 							disabled={total === 0}
 						/>
 						<ColumnsButton columns={cols} hidden={hidden} onToggle={toggle} onReset={reset} />
+						<RefreshReportsButton />
 					</>
 				}
 			/>

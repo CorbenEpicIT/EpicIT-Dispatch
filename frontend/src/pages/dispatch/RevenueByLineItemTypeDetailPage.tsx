@@ -138,9 +138,7 @@ export default function RevenueByLineItemTypeDetailPage() {
 						Back to Revenue by Line Item Type
 					</Link>
 				}
-			>
-				<RefreshReportsButton />
-			</PageHeader>
+			/>
 
 			{truncated && (
 				<div className="mb-4 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning-text">
@@ -175,6 +173,7 @@ export default function RevenueByLineItemTypeDetailPage() {
 							disabled={total === 0}
 						/>
 						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
+						<RefreshReportsButton />
 					</>
 				}
 			/>

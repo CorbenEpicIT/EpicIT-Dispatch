@@ -118,9 +118,7 @@ export default function FieldAddedRevenuePage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Field-Added Revenue">
-				<RefreshReportsButton />
-			</PageHeader>
+			<PageHeader title="Field-Added Revenue" />
 
 			<div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
 				{stats.map((card) => (
@@ -170,6 +168,7 @@ export default function FieldAddedRevenuePage() {
 							disabled={total === 0}
 						/>
 						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
+						<RefreshReportsButton />
 					</>
 				}
 			/>

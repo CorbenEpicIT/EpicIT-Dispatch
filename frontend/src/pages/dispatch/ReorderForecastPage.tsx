@@ -268,9 +268,7 @@ export default function ReorderForecastPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Reorder Forecast">
-				<RefreshReportsButton />
-			</PageHeader>
+			<PageHeader title="Reorder Forecast" />
 
 			{/* Every number on this page is an estimate off a fixed window, and the
 			    window is not obvious from any column — so it's stated once, up top,
@@ -412,6 +410,7 @@ export default function ReorderForecastPage() {
 							disabled={total === 0}
 						/>
 						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
+						<RefreshReportsButton />
 					</>
 				}
 			/>

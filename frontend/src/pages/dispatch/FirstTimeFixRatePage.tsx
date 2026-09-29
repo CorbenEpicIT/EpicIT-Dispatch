@@ -101,9 +101,7 @@ export default function FirstTimeFixRatePage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="First-Time Fix Rate">
-				<RefreshReportsButton />
-			</PageHeader>
+			<PageHeader title="First-Time Fix Rate" />
 
 			<div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
 				{stats.map((card) => (
@@ -146,6 +144,7 @@ export default function FirstTimeFixRatePage() {
 							disabled={total === 0}
 						/>
 						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
+						<RefreshReportsButton />
 					</>
 				}
 			/>

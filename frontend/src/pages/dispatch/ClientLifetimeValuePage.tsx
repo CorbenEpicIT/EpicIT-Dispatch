@@ -122,9 +122,7 @@ export default function ClientLifetimeValuePage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Client Lifetime Value">
-				<RefreshReportsButton />
-			</PageHeader>
+			<PageHeader title="Client Lifetime Value" />
 
 			<div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
 				{stats.map((card) => (
@@ -157,6 +155,7 @@ export default function ClientLifetimeValuePage() {
 							disabled={total === 0}
 						/>
 						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
+						<RefreshReportsButton />
 					</>
 				}
 			/>

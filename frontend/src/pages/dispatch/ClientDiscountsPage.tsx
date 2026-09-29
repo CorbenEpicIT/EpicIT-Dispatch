@@ -133,9 +133,7 @@ export default function ClientDiscountsPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Client Discounts">
-				<RefreshReportsButton />
-			</PageHeader>
+			<PageHeader title="Client Discounts" />
 
 			<div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
 				{stats.map((card) => (
@@ -169,6 +167,7 @@ export default function ClientDiscountsPage() {
 							disabled={total === 0}
 						/>
 						<ColumnsButton columns={COLS} hidden={hidden} onToggle={toggle} onReset={reset} />
+						<RefreshReportsButton />
 					</>
 				}
 			/>
