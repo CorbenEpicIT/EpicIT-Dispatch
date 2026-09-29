@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import { fillCoords } from "../lib/geocode.js";
 import { db } from "../db.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { getSocket } from "../services/socketService.js";
@@ -290,6 +291,8 @@ function quoteConversionRefusal(quote: DocumentShape, hasOpenDispute: boolean): 
 export const insertJob = async (req: Request, context?: UserContext) => {
 	try {
 		const parsed = createJobSchema.parse(req.body);
+		const geoErr = await fillCoords(parsed, true);
+		if (geoErr) return { err: geoErr };
 		const organizationId = req.user!.organization_id as string;
 		const sdb = getScopedDb(organizationId);
 		let created: Awaited<ReturnType<typeof db.job.findFirst>> | undefined;
@@ -758,6 +761,8 @@ export const updateJob = async (req: Request, organizationId: string, context?: 
 	try {
 		const id = req.params.id as string;
 		const parsed = updateJobSchema.parse(req.body);
+		const geoErr = await fillCoords(parsed, true);
+		if (geoErr) return { err: geoErr };
 
 		const sdb = getScopedDb(organizationId);
 		const existing = await sdb.job.findFirst({

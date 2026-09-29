@@ -10,6 +10,7 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import { fillCoords } from "../lib/geocode.js";
 import { formatZodError } from "../lib/validate/shared.js";
 import { assertValidRequestTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
 import { onRequestCreated } from "../services/followupTriggers.js";
@@ -147,6 +148,7 @@ export const getRequestsByClientId = async (clientId: string, organizationId: st
 export const insertRequest = async (req: Request, organizationId: string, context?: UserContext) => {
 	try {
 		const parsed = createRequestSchema.parse(req.body);
+		await fillCoords(parsed, false);
 		const sdb = getScopedDb(organizationId);
 
 		const created = await sdb.$transaction(async (tx) => {
@@ -241,6 +243,7 @@ export const updateRequest = async (req: Request, organizationId: string, contex
 	try {
 		const requestId = req.params.id as string;
 		const parsed = updateRequestSchema.parse(req.body);
+		await fillCoords(parsed, false);
 		const sdb = getScopedDb(organizationId);
 
 		const existing = await sdb.request.findFirst({

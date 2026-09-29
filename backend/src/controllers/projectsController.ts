@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import { fillCoords } from "../lib/geocode.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import {
     createProjectSchema,
@@ -120,6 +121,7 @@ export const getProjectsByClientId = async (orgId: string, clientId: string) => 
 export const insertProject = async (req: Request, context?: UserContext) => {
     try {
         const parsed = createProjectSchema.parse(req.body);
+        await fillCoords(parsed, false);
         const orgId = req.user!.organization_id as string;
         const sdb = getScopedDb(orgId);
 
@@ -208,6 +210,7 @@ export const updateProject = async (req: Request, context?: UserContext) => {
     try {
         const id = req.params.id as string;
         const parsed = updateProjectSchema.parse(req.body);
+        await fillCoords(parsed, false);
         const orgId = req.user!.organization_id as string;
         const sdb = getScopedDb(orgId);
 

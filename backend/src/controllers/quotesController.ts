@@ -12,6 +12,7 @@ import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
 import { assertValidQuoteTransition, InvalidTransitionError } from "../lib/statusTransitions.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
+import { fillCoords } from "../lib/geocode.js";
 import { assertInventoryItemsInOrg } from "../lib/inventory.js";
 import { resolveDocumentLineage } from "../lib/documentLineage.js";
 import { SOLD_BY_QUOTE_JOBS } from "../services/disputeAdapters.js";
@@ -146,6 +147,7 @@ export const getQuotesByClientId = async (clientId: string, organizationId: stri
 export const insertQuote = async (req: Request, organizationId: string, context?: UserContext) => {
 	try {
 		const parsed = createQuoteSchema.parse(req.body);
+		await fillCoords(parsed, false);
 		const sdb = getScopedDb(organizationId);
 
 		let created: Awaited<ReturnType<typeof db.quote.findFirst>> | undefined;
@@ -366,6 +368,7 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 	try {
 		const quoteId = req.params.id as string;
 		const parsed = updateQuoteSchema.parse(req.body);
+		await fillCoords(parsed, false);
 		const sdb = getScopedDb(organizationId);
 
 		const existing = await sdb.quote.findFirst({

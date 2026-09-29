@@ -4,7 +4,7 @@ import { coordsSchema } from "./shared.js";
 export const createClientSchema = z.object({
 	name: z.string().min(1, "Client name is required"),
 	address: z.string().min(1, "Client address is required"),
-	coords: coordsSchema,
+	coords: coordsSchema.optional(), // filled from address by fillCoords when omitted
 	is_active: z.boolean().optional().default(true),
 	qb_customer_id: z.string().optional(),
 	qb_contact_name: z.string().optional(),

@@ -99,7 +99,7 @@ async function main() {
 			redirect_uris: [
 				"http://localhost:3000/oauth/callback-test",
 				"http://localhost:9000", // `zapier invoke auth start` loopback catcher
-				"https://zapier.com/dashboard/auth/oauth/return/App243204CLIAPI/",
+				"https://zapier.com/dashboard/auth/oauth/return/App246740CLIAPI/", // TradeWerks-Zapier (.zapierapprc id 246740)
 			],
 			is_confidential: true,
 		},
