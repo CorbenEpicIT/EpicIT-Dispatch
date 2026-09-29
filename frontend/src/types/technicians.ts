@@ -69,6 +69,7 @@ export interface VisitTech {
 export interface VisitTechnician {
 	visit_id: string;
 	tech_id: string;
+	tech_status?: "Assigned" | "EnRoute" | "OnSite" | "Done";
 	visit: {
 		id: string;
 		job_id: string;

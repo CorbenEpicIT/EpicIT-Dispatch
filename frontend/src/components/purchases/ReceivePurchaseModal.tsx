@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { X, ScanLine, Loader2, Package, Wrench, Warehouse, Truck, ArrowLeft } from "lucide-react";
+import { X, ScanLine, Loader2, Package, Wrench } from "lucide-react";
 import FullPopup from "../ui/FullPopup";
 import { BarcodeScanner } from "../inventory/BarcodeScanner";
 import { useReceivePurchaseMutation } from "../../hooks/usePurchases";
@@ -23,7 +23,7 @@ interface ReceivePurchaseModalProps {
 
 const isReceivable = (l: PurchaseLine) => l.disposition === "receive" || l.disposition === "non_stock";
 const remainderOf = (l: PurchaseLine) => Math.max(0, Number(l.quantity) - Number(l.quantity_recieved));
-const NEW_LOCATION = "__new__";
+const NEW_VEHICLE = "__new__";
 
 // Only an item with no home gets an input. One that already lives on A42 is
 // read-only here: the receive modal must never be able to move it, because
@@ -48,8 +48,6 @@ export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: Rece
 	const [vehicleOverrides, setVehicleOverrides] = useState<Record<string, string>>(() =>
 		Object.fromEntries(lines.map((l) => [l.id, l.disposition_vehicle_id ?? ""])),
 	);
-	// Present only for lines where "New location…" is picked: null = choosing, string = warehouse spot.
-	const [newLocations, setNewLocations] = useState<Record<string, string | null>>({});
 	const [vehicleForLine, setVehicleForLine] = useState<string | null>(null);
 	const { mutateAsync: createVehicle } = useCreateVehicleMutation();
 	const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -95,19 +93,14 @@ export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: Rece
 	};
 
 	const touched = lines.map((l) => ({ line: l, qty: Number(drafts[l.id]) })).filter((t) => t.qty > 0);
-	const missingLocation = touched.some((t) => t.line.id in newLocations && !newLocations[t.line.id]?.trim());
-
+	// Selection stays on the previous destination until a vehicle is actually created.
 	const setDestination = (lineId: string, value: string) => {
-		const isNew = value === NEW_LOCATION;
-		setVehicleOverrides((prev) => ({ ...prev, [lineId]: isNew ? "" : value }));
-		setNewLocations((prev) => {
-			const { [lineId]: _removed, ...rest } = prev;
-			return isNew ? { ...rest, [lineId]: null } : rest;
-		});
+		if (value === NEW_VEHICLE) setVehicleForLine(lineId);
+		else setVehicleOverrides((prev) => ({ ...prev, [lineId]: value }));
 	};
 
 	const handleSubmit = async () => {
-		if (touched.length === 0 || missingLocation) return;
+		if (touched.length === 0) return;
 		try {
 			const { warnings } = await receive({
 				id: purchase.id,
@@ -208,7 +201,7 @@ export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: Rece
 												<Package size={10} />
 												Receive →
 												<select
-													value={l.id in newLocations ? NEW_LOCATION : (vehicleOverrides[l.id] ?? "")}
+													value={vehicleOverrides[l.id] ?? ""}
 													onChange={(e) => setDestination(l.id, e.target.value)}
 													aria-label={`Receive "${l.description}" into`}
 													className="bg-transparent text-[11px] font-semibold text-primary-text focus:outline-none [&>option]:bg-base [&>option]:text-text-primary"
@@ -222,7 +215,7 @@ export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: Rece
 															{v.name}
 														</option>
 													))}
-													<option value={NEW_LOCATION}>New location…</option>
+													<option value={NEW_VEHICLE}>New vehicle…</option>
 												</select>
 											</span>
 										) : (
@@ -273,46 +266,6 @@ export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: Rece
 									)}
 								</div>
 							</div>
-							{newLocations[l.id] === null && (
-								<div className="mt-2 flex gap-2">
-									<button
-										type="button"
-										onClick={() => setNewLocations((prev) => ({ ...prev, [l.id]: "" }))}
-										disabled={!l.inventory_item}
-										title={l.inventory_item ? undefined : "Line isn't linked to an inventory item"}
-										className={`${BTN_GHOST} disabled:cursor-not-allowed disabled:opacity-50`}
-									>
-										<Warehouse size={14} />
-										Warehouse
-									</button>
-									<button type="button" onClick={() => setVehicleForLine(l.id)} className={BTN_GHOST}>
-										<Truck size={14} />
-										Vehicle
-									</button>
-								</div>
-							)}
-							{typeof newLocations[l.id] === "string" && (
-								<div className="mt-2 flex gap-2">
-									<button
-										type="button"
-										onClick={() => setNewLocations((prev) => ({ ...prev, [l.id]: null }))}
-										className={BTN_GHOST}
-									>
-										<ArrowLeft size={14} />
-										Back
-									</button>
-									<input
-										type="text"
-										autoFocus
-										maxLength={255}
-										value={newLocations[l.id] ?? ""}
-										onChange={(e) => setNewLocations((prev) => ({ ...prev, [l.id]: e.target.value }))}
-										placeholder="Warehouse location, e.g. Shelf B3"
-										aria-label={`New warehouse location for ${l.description}`}
-										className="flex-1 min-w-0 h-8 text-sm border border-border-input rounded bg-base text-text-primary px-2 focus:border-primary focus:outline-none"
-									/>
-								</div>
-							)}
 							<div className="mt-2 flex items-center gap-2">
 								<div className="flex-1 h-1.5 rounded-full bg-surface-inset overflow-hidden">
 									<div
@@ -341,8 +294,6 @@ export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: Rece
 				<span className="text-xs text-text-muted">
 					{touched.length === 0
 						? "No quantities entered"
-						: missingLocation
-						? "Finish the new location"
 						: `${touched.length} line${touched.length === 1 ? "" : "s"} will be received`}
 				</span>
 				<div className="flex items-center gap-2">
@@ -352,7 +303,7 @@ export default function ReceivePurchaseModal({ isOpen, onClose, purchase }: Rece
 					<button
 						type="button"
 						onClick={handleSubmit}
-						disabled={isPending || touched.length === 0 || missingLocation}
+						disabled={isPending || touched.length === 0}
 						className={BTN_CONFIRM}
 					>
 						{isPending && <Loader2 size={12} className="animate-spin" />}

@@ -158,6 +158,13 @@ const MIN_ANIM_MS = 1500;
 const MAX_ANIM_MS = 5000;
 const DEFAULT_ANIM_MS = 2500;
 
+// Mapbox paint props can't read CSS vars; resolve "var(--x)" to its computed value
+function resolveCssColor(color: string): string {
+	const name = color.match(/^var\((--[^)]+)\)$/)?.[1];
+	if (!name) return color;
+	return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || color;
+}
+
 const DynamicMap = ({
 	containerRef,
 	staticMarkers = [],
@@ -438,7 +445,7 @@ const DynamicMap = ({
 				if (existingSource) {
 					existingSource.setData(route.routeGeoJSON);
 					if (map.getLayer(layerId)) {
-						map.setPaintProperty(layerId, "line-color", route.color);
+						map.setPaintProperty(layerId, "line-color", resolveCssColor(route.color));
 					}
 				} else {
 					map.addSource(layerId, {
@@ -451,9 +458,10 @@ const DynamicMap = ({
 						source: layerId,
 						layout: { "line-cap": "round", "line-join": "round" },
 						paint: {
-							"line-color": route.color,
+							"line-color": resolveCssColor(route.color),
 							"line-width": 5,
 							"line-opacity": 0.8,
+							"line-emissive-strength": 1, // ignore the dusk light preset's dimming
 						},
 					});
 					routeLayerIdsRef.current.add(layerId);

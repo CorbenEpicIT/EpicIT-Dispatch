@@ -1,4 +1,5 @@
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
+import { coordsSchema } from "../lib/validate/shared.js";
 import type {
 	tech_break_reason,
 	technician_status,
@@ -336,53 +337,22 @@ export const checkAndClearWrappingUp = async (
 	}
 };
 
+// Live GPS ping: coords only, no activity log (fires every ~15s while on shift)
 export const updateTechnicianLocation = async (
 	id: string,
 	data: unknown,
 	organizationId: string,
-	context?: UserContext,
 ) => {
 	try {
-		const parsed = updateTechnicianSchema.parse(data);
+		const { coords } = z.object({ coords: coordsSchema }).parse(data);
 		const sdb = getScopedDb(organizationId);
 
-		const existing = await sdb.technician.findFirst({ where: { id } });
-
+		const existing = await sdb.technician.findFirst({ where: { id }, select: { id: true } });
 		if (!existing) {
 			return { err: "Technician not found" };
 		}
 
-		const updated = await sdb.$transaction(async (tx) => {
-			const technician = await tx.technician.update({
-				where: { id },
-				data: parsed,
-			});
-
-			await logActivity({
-				event_type: "technician.updated",
-				action: "updated",
-				entity_type: "technician",
-				entity_id: id,
-				organization_id: organizationId,
-				actor_type: context?.techId
-					? "technician"
-					: context?.dispatcherId
-						? "dispatcher"
-						: "system",
-				actor_id: context?.techId || context?.dispatcherId,
-				changes: {
-					coords: {
-						old: existing.coords ?? null,
-						new: parsed.coords ?? null,
-					},
-				},
-				ip_address: context?.ipAddress,
-				user_agent: context?.userAgent,
-			});
-
-			return technician;
-		});
-
+		const updated = await sdb.technician.update({ where: { id }, data: { coords } });
 		return { err: "", item: updated };
 	} catch (e) {
 		if (e instanceof ZodError) {

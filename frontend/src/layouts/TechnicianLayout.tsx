@@ -3,6 +3,7 @@ import { useAuthStore } from "../auth/authStore";
 import { useRef, useEffect, useState, useCallback } from "react";
 import { ClipboardList, ArrowLeft, House, Truck, Bell, AlertTriangle, Map, X, Gauge } from "lucide-react";
 import { useTechnicianByIdQuery } from "../hooks/useTechnicians";
+import { pingLocation } from "../api/technicians";
 import { useNotificationsQuery } from "../hooks/useNotifications";
 import { useSocketQuerySync } from "../hooks/useSocketQuerySync";
 import type { TechnicianNotification } from "../types/notifications";
@@ -35,6 +36,35 @@ export default function TechnicianLayout() {
 	const { data: notifications = [] } = useNotificationsQuery(user?.userId ?? null, false, handleNewNotification);
 	const unreadCount = notifications.filter((n) => !n.read_at).length;
 	const noVehicle = techProfile && !techProfile.current_vehicle_id;
+
+	// Live location for the dispatch map while on shift: latest fix sent at most every 15s
+	const onShift = !!techProfile && techProfile.status !== "Offline";
+	useEffect(() => {
+		if (!onShift || !user?.userId || !("geolocation" in navigator)) return;
+		const techId = user.userId;
+		type Coords = { lat: number; lon: number };
+		let latest: Coords | null = null;
+		let sent: Coords | null = null;
+		const flush = () => {
+			// no token = logging out / switching user; a 401 here would refresh the old session back in
+			if (!latest || latest === sent || !localStorage.getItem("accessToken")) return;
+			sent = latest;
+			pingLocation(techId, latest).catch(() => {});
+		};
+		const watchId = navigator.geolocation.watchPosition(
+			(pos) => {
+				latest = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+				if (!sent) flush();
+			},
+			(err) => console.warn("Location tracking unavailable:", err.message),
+			{ enableHighAccuracy: true, maximumAge: 10_000 },
+		);
+		const interval = setInterval(flush, 15_000);
+		return () => {
+			navigator.geolocation.clearWatch(watchId);
+			clearInterval(interval);
+		};
+	}, [onShift, user?.userId]);
 
 	useEffect(() => {
 		navigationCount.current++;

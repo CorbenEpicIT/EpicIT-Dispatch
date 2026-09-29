@@ -88,6 +88,10 @@ export const goOffline = async (technicianId: string, techCoords?: { lat: number
 	return response.data.data!;
 };
 
+export const pingLocation = async (technicianId: string, coords: { lat: number; lon: number }): Promise<void> => {
+	await api.post(`/technicians/${technicianId}/ping`, { coords });
+};
+
 export const goOnBreak = async (technicianId: string, reason: string): Promise<Technician> => {
 	const response = await api.post<ApiResponse<Technician>>(`/technicians/${technicianId}/break`, { reason });
 	if (!response.data.success) {

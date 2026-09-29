@@ -910,16 +910,6 @@ export async function receivePurchase(
 		}
 		await assertDispositionVehiclesInOrg(db, orgId, [...vehicleOverrideById.values()]);
 
-		const locationLines = parsed.lines.filter((l) => l.location !== undefined);
-		const badLocation = locationLines.filter((l) => {
-			const line = linesById.get(l.id)!;
-			const vehicleId = vehicleOverrideById.has(l.id) ? vehicleOverrideById.get(l.id) : line.disposition_vehicle_id;
-			return line.disposition !== "receive" || !line.inventory_item_id || vehicleId;
-		});
-		if (badLocation.length > 0) {
-			return { err: "Validation failed: a location only applies to a warehouse receive of an inventory item" };
-		}
-
 		const dispatcherId = context?.dispatcherId ?? "";
 		const touchedIds = [...incrementById.keys()].sort();
 
@@ -1016,18 +1006,6 @@ export async function receivePurchase(
 							: {}),
 					},
 				});
-			}
-
-			const locationChanges: { itemId: string; old: string; new: string }[] = [];
-			for (const l of locationLines) {
-				const itemId = linesById.get(l.id)!.inventory_item_id!;
-				const item = await tx.inventory_item.findUniqueOrThrow({
-					where: { id: itemId },
-					select: { location: true },
-				});
-				if (item.location === l.location) continue;
-				await tx.inventory_item.update({ where: { id: itemId }, data: { location: l.location } });
-				locationChanges.push({ itemId, old: item.location ?? "", new: l.location! });
 			}
 
 			// A line with no disposition was never asked to be received, so it

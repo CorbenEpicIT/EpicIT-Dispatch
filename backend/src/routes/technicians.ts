@@ -4,6 +4,7 @@ import {
     getTechnicianById,
     insertTechnician,
     updateTechnician,
+    updateTechnicianLocation,
     deleteTechnician,
     checkAndClearWrappingUp,
     startShift,
@@ -100,7 +101,6 @@ router.post("/:id/ping", requirePermissionOrSelf("manage_technicians"), async (r
     try {
         const id = req.params.id as string;
         const orgId = req.user!.organization_id as string;
-        const context = getUserContext(req);
 
         // Lazy WrappingUp auto-transition: clear to Available if timer has passed
         const cleared = await checkAndClearWrappingUp(id, orgId);
@@ -115,19 +115,15 @@ router.post("/:id/ping", requirePermissionOrSelf("manage_technicians"), async (r
             });
         }
 
-        const result = await updateTechnician(id, req.body, orgId, context);
+        const result = await updateTechnicianLocation(id, req.body, orgId);
 
         if (result.err) {
-            const isDuplicate = result.err
-                .toLowerCase()
-                .includes("already exists");
+            const notFound = result.err === "Technician not found";
             return res
-                .status(isDuplicate ? 409 : 400)
+                .status(notFound ? 404 : 400)
                 .json(
                     createErrorResponse(
-                        isDuplicate
-                            ? ErrorCodes.CONFLICT
-                            : ErrorCodes.VALIDATION_ERROR,
+                        notFound ? ErrorCodes.NOT_FOUND : ErrorCodes.VALIDATION_ERROR,
                         result.err,
                     ),
                 );

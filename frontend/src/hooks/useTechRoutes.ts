@@ -17,9 +17,10 @@ interface DrivingTarget {
 }
 
 function pickDrivingTarget(tech: Technician): DrivingTarget | null {
+	// A 2nd tech driving to a visit already OnSite only flips their own tech_status
 	const drivingVisits = (tech.visit_techs ?? [])
-		.map((vt) => vt.visit)
-		.filter((v) => v.status === "Driving");
+		.filter((vt) => vt.visit.status === "Driving" || vt.tech_status === "EnRoute")
+		.map((vt) => vt.visit);
 
 	if (drivingVisits.length === 0) return null;
 
