@@ -172,7 +172,7 @@ function purchase(over: Partial<FieldPurchase> = {}): FieldPurchase {
 				job_visit_id: null,
 				job_visit: null,
 				amount: "180.00",
-				job: { id: "job-1", job_number: 412, name: "Rooftop unit down" },
+				job: { id: "job-1", job_number: "J-0412", name: "Rooftop unit down" },
 			},
 		],
 		...over,

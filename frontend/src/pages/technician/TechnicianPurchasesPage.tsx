@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ShieldOff, WifiOff } from "lucide-react";
+import { AlertTriangle, ShieldOff, Undo2, WifiOff } from "lucide-react";
 import { useFieldPurchaseQueue, useMyPurchaseAuthority } from "../../hooks/useFieldPurchases";
 import AskForAccessButton from "../../components/technician/procurement/AskForAccessButton";
 import AuthorityStrip from "../../components/technician/procurement/AuthorityStrip";
@@ -8,6 +8,7 @@ import RequestApprovalButton from "../../components/technician/procurement/Reque
 import StartPurchaseButton from "../../components/technician/procurement/StartPurchaseButton";
 import { money } from "../../components/fieldPurchases/fieldPurchaseFormat";
 import TechPage from "../../components/technician/TechPage";
+import { refundStateLabel } from "../../components/technician/procurement/sheetCopy";
 import {
 	FIELD_PURCHASE_STATUS_LABELS,
 	isPrePurchase,
@@ -190,6 +191,7 @@ export default function TechnicianPurchasesPage() {
 }
 
 function PurchaseRow({ purchase, nudge }: { purchase: FieldPurchase; nudge?: string }) {
+	const isRefund = purchase.kind === "refund";
 	return (
 		<li>
 			<Link
@@ -197,8 +199,21 @@ function PurchaseRow({ purchase, nudge }: { purchase: FieldPurchase; nudge?: str
 				className="block min-h-11 rounded-xl border border-border bg-base p-3 transition-colors hover:bg-surface"
 			>
 				<div className="flex items-baseline justify-between gap-2">
-					<span className="truncate text-sm font-medium text-text-primary">
-						{purchase.vendor_name || "Vendor not recorded"}
+					<span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-text-primary">
+						{/* A refund row is otherwise the purchase it reverses, twice. */}
+						{isRefund && (
+							<>
+								<Undo2
+									aria-hidden
+									size={13}
+									className="flex-shrink-0 text-text-muted"
+								/>
+								<span className="sr-only">Refund:</span>
+							</>
+						)}
+						<span className="truncate">
+							{purchase.vendor_name || "Vendor not recorded"}
+						</span>
 					</span>
 					<span className="flex-shrink-0 text-sm tabular-nums text-text-primary">
 						{/* Before the counter `total` holds the estimate, so an
@@ -214,13 +229,16 @@ function PurchaseRow({ purchase, nudge }: { purchase: FieldPurchase; nudge?: str
 								<span className="sr-only">Estimated</span>
 							</>
 						)}
+						{isRefund ? "−" : ""}
 						{money(purchase.total)}
 					</span>
 				</div>
 				<div className="mt-1 flex items-center justify-between gap-2">
 					<span className="flex min-w-0 items-center gap-1.5">
 						<span className={`text-xs font-medium ${statusTone(purchase)}`}>
-							{FIELD_PURCHASE_STATUS_LABELS[purchase.status]}
+							{isRefund
+								? refundStateLabel(purchase)
+								: FIELD_PURCHASE_STATUS_LABELS[purchase.status]}
 						</span>
 						{/* Two trips to the same counter in a week look identical without it. */}
 						{purchase.purchased_at && (

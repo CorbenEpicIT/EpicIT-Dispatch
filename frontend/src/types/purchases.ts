@@ -56,7 +56,7 @@ export interface PurchaseAllocation {
 	job_visit_id: string | null;
 	/** Derived from lines, never typed. */
 	amount: string;
-	job: { id: string; job_number: number | null; name: string | null } | null;
+	job: { id: string; job_number: string | null; name: string | null } | null;
 	job_visit: { id: string; name: string | null; scheduled_start_at: string | null } | null;
 }
 

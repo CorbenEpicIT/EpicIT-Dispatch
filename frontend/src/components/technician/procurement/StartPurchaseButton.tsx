@@ -194,7 +194,7 @@ export default function StartPurchaseButton({ job, vehicleId, label, hint }: Pro
 	);
 }
 
-type JobOption = { job_id: string; job_name?: string | null; job_number?: number | null };
+type JobOption = { job_id: string; job_name?: string | null; job_number?: string | null };
 
 /** Asked once, after the shot. A bottom sheet because it is answered one-handed. */
 function JobChooser({
