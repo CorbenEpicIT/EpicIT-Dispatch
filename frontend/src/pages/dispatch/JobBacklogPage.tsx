@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { ClipboardList } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import PageHeader from "../../components/ui/PageHeader";
+import RefreshReportsButton from "../../components/reports/RefreshReportButton";
 import AdaptableTable from "../../components/AdaptableTable";
 import JobBacklogChart from "../../components/reports/JobBacklogChart";
 import {
@@ -63,7 +64,9 @@ export default function JobBacklogPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Job Backlog" />
+			<PageHeader title="Job Backlog">
+				<RefreshReportsButton />
+			</PageHeader>
 
 			<p className="text-sm text-text-tertiary mb-4 max-w-3xl">
 				Open jobs grouped by status, showing how long they have been at that status

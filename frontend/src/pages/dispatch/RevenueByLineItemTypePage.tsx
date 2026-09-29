@@ -3,6 +3,7 @@ import { Coins } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import PageControls from "../../components/ui/PageControls";
 import PageHeader from "../../components/ui/PageHeader";
+import RefreshReportsButton from "../../components/reports/RefreshReportButton";
 import ColumnsButton from "../../components/ui/ColumnsButton";
 import StatCard from "../../components/ui/StatCard";
 import ExportExcelButton from "../../components/reports/ExportExcelButton";
@@ -95,7 +96,9 @@ export default function RevenueByLineItemTypePage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Revenue by Line Item Type" />
+			<PageHeader title="Revenue by Line Item Type">
+				<RefreshReportsButton />
+			</PageHeader>
 
 			<div className="grid grid-cols-2 gap-3 mb-4">
 				{stats.map((card) => (

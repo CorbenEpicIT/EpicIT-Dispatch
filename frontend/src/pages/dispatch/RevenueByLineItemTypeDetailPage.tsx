@@ -5,6 +5,7 @@ import SearchBar from "../../components/ui/SearchBar";
 import FilterChips from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import PageHeader from "../../components/ui/PageHeader";
+import RefreshReportsButton from "../../components/reports/RefreshReportButton";
 import ColumnsButton from "../../components/ui/ColumnsButton";
 import ExportExcelButton from "../../components/reports/ExportExcelButton";
 import AdaptableTable from "../../components/AdaptableTable";
@@ -137,7 +138,9 @@ export default function RevenueByLineItemTypeDetailPage() {
 						Back to Revenue by Line Item Type
 					</Link>
 				}
-			/>
+			>
+				<RefreshReportsButton />
+			</PageHeader>
 
 			{truncated && (
 				<div className="mb-4 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning-text">

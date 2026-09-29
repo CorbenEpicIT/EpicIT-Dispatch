@@ -6,6 +6,7 @@ import SearchBar from "../../components/ui/SearchBar";
 import FilterChips from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import PageHeader from "../../components/ui/PageHeader";
+import RefreshReportsButton from "../../components/reports/RefreshReportButton";
 import ColumnsButton from "../../components/ui/ColumnsButton";
 import ExportExcelButton from "../../components/reports/ExportExcelButton";
 import ReorderPriorityChart from "../../components/reports/ReorderPriorityChart";
@@ -267,7 +268,9 @@ export default function ReorderForecastPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Reorder Forecast" />
+			<PageHeader title="Reorder Forecast">
+				<RefreshReportsButton />
+			</PageHeader>
 
 			{/* Every number on this page is an estimate off a fixed window, and the
 			    window is not obvious from any column — so it's stated once, up top,

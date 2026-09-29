@@ -7,6 +7,7 @@ import FilterChips from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import DateRangeFilter from "../../components/ui/DateRangeFilter";
 import PageHeader from "../../components/ui/PageHeader";
+import RefreshReportsButton from "../../components/reports/RefreshReportButton";
 import ColumnsButton from "../../components/ui/ColumnsButton";
 import ExportExcelButton from "../../components/reports/ExportExcelButton";
 import TechRevenuePerHourChart from "../../components/reports/TechRevenuePerHourChart";
@@ -269,7 +270,9 @@ export default function TechnicianScorecardPage() {
 						</button>
 					) : undefined
 				}
-			/>
+			>
+				<RefreshReportsButton />
+			</PageHeader>
 
 			<div className="grid grid-cols-3 gap-3 mb-4">
 				{stats.map((card) => (

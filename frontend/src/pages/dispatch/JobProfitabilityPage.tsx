@@ -5,6 +5,7 @@ import SearchBar from "../../components/ui/SearchBar";
 import FilterChips from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import PageHeader from "../../components/ui/PageHeader";
+import RefreshReportsButton from "../../components/reports/RefreshReportButton";
 import ColumnsButton from "../../components/ui/ColumnsButton";
 import StatCard from "../../components/ui/StatCard";
 import ExportExcelButton from "../../components/reports/ExportExcelButton";
@@ -205,7 +206,9 @@ export default function JobProfitabilityPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Job Profitability" />
+			<PageHeader title="Job Profitability">
+				<RefreshReportsButton />
+			</PageHeader>
 
 			<div className="flex items-center gap-1 mb-4 w-fit rounded-md border border-border p-0.5">
 				<button

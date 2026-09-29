@@ -5,6 +5,7 @@ import SearchBar from "../../components/ui/SearchBar";
 import FilterChips from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import PageHeader from "../../components/ui/PageHeader";
+import RefreshReportsButton from "../../components/reports/RefreshReportButton";
 import ColumnsButton from "../../components/ui/ColumnsButton";
 import ExportExcelButton from "../../components/reports/ExportExcelButton";
 import AdaptableTable from "../../components/AdaptableTable";
@@ -118,7 +119,9 @@ export default function AgedReceivablesPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Aged Receivables" />
+			<PageHeader title="Aged Receivables">
+				<RefreshReportsButton />
+			</PageHeader>
 
 			{summaryChart.data && (
 				<div className="mb-4 h-72">

@@ -5,6 +5,7 @@ import SearchBar from "../../components/ui/SearchBar";
 import FilterChips from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import PageHeader from "../../components/ui/PageHeader";
+import RefreshReportsButton from "../../components/reports/RefreshReportButton";
 import ColumnsButton from "../../components/ui/ColumnsButton";
 import StatCard from "../../components/ui/StatCard";
 import ExportExcelButton from "../../components/reports/ExportExcelButton";
@@ -121,7 +122,9 @@ export default function ClientLifetimeValuePage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Client Lifetime Value" />
+			<PageHeader title="Client Lifetime Value">
+				<RefreshReportsButton />
+			</PageHeader>
 
 			<div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
 				{stats.map((card) => (

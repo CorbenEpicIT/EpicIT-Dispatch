@@ -36,6 +36,7 @@ export interface ReportRows {
 	isLoading: boolean;
 	isFetching: boolean;
 	error: Error | null;
+	refetch: () => void;
 }
 
 const toReportRows = (result: UseQueryResult<Paginated, Error>): ReportRows => ({
@@ -47,6 +48,7 @@ const toReportRows = (result: UseQueryResult<Paginated, Error>): ReportRows => (
 	isLoading: result.isLoading,
 	isFetching: result.isFetching,
 	error: result.error ?? null,
+	refetch: () => void result.refetch(),
 });
 
 export interface ReportSource {

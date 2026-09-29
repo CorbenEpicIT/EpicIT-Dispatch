@@ -5,6 +5,7 @@ import SearchBar from "../../components/ui/SearchBar";
 import FilterChips from "../../components/ui/FilterChips";
 import PageControls from "../../components/ui/PageControls";
 import PageHeader from "../../components/ui/PageHeader";
+import RefreshReportsButton from "../../components/reports/RefreshReportButton";
 import ColumnsButton from "../../components/ui/ColumnsButton";
 import ExportExcelButton from "../../components/reports/ExportExcelButton";
 import AdaptableTable from "../../components/AdaptableTable";
@@ -116,7 +117,9 @@ export default function TaxLiabilityPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Tax Liability" />
+			<PageHeader title="Tax Liability">
+				<RefreshReportsButton />
+			</PageHeader>
 
 			<PageControls
 				className="mb-4"

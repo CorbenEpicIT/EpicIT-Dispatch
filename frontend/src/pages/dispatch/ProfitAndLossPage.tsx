@@ -3,6 +3,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import { BarChart3, Info, PlugZap } from "lucide-react";
 import PageControls from "../../components/ui/PageControls";
 import PageHeader from "../../components/ui/PageHeader";
+import RefreshReportsButton from "../../components/reports/RefreshReportButton";
 import DateRangeFilter from "../../components/ui/DateRangeFilter";
 import ProfitAndLossStatement from "../../components/reports/ProfitAndLossStatement";
 import SyncedClientsToggle from "../../components/reports/SyncedClientsToggle";
@@ -48,7 +49,9 @@ export default function ProfitAndLossPage() {
 
 	return (
 		<div className="text-text-primary">
-			<PageHeader title="Profit & Loss" />
+			<PageHeader title="Profit & Loss">
+				<RefreshReportsButton />
+			</PageHeader>
 
 			<PageControls
 				className="mb-4"
