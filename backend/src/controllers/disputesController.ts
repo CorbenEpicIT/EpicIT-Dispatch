@@ -28,6 +28,7 @@ import {
 } from "../lib/disputeAuthz.js";
 import { requireAnyPermission } from "../lib/requirePermissions.js";
 import type { DisputeKind } from "../services/disputeAdapters.js";
+import { notifyDispatchers } from "./notificationsController.js";
 
 /** Who is asking, read the same way by every dispute door. */
 const accessFrom = (req: Request): DisputeAccess => ({
@@ -120,13 +121,17 @@ export const postDispute = async (
 	try {
 		const parsed = openDisputeSchema.parse(req.body);
 		const organizationId = req.user!.organization_id as string;
-		return await openDispute(
-			kind,
-			documentId,
-			parsed,
-			organizationId,
-			getUserContext(req),
-		);
+		const context = getUserContext(req);
+		const result = await openDispute(kind, documentId, parsed, organizationId, context);
+		if (!("err" in result)) {
+			notifyDispatchers({
+				type: "dispute_opened",
+				title: `Dispute opened on a ${kind}`,
+				body: parsed.reason.slice(0, 200),
+				actionUrl: `/dispatch/${kind}s/${documentId}`,
+			}, organizationId, context.dispatcherId).catch(() => {});
+		}
+		return result;
 	} catch (e) {
 		return toErr(e, "open");
 	}

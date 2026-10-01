@@ -2610,6 +2610,26 @@ model technician_notification {
 }
 
 // ============================================================================
+// DISPATCHER NOTIFICATIONS 
+// ============================================================================
+
+model dispatcher_notification {
+  id              String @id @default(uuid())
+  dispatcher_id   String
+  dispatcher      dispatcher @relation(fields: [dispatcher_id], references: [id], onDelete: Cascade)
+  type            String  // dont have types yet
+  title           String
+  body            String @db.Text
+  action_url      String?
+  read_at         DateTime?
+  created_at      DateTime @default(now())
+
+  @@index([dispatcher_id])
+  @@index([dispatcher_id, read_at])
+  @@index([created_at])
+}
+
+// ============================================================================
 // USERS
 // ============================================================================
 
@@ -2693,6 +2713,7 @@ model dispatcher {
   password_reset_token       String?   @unique
   password_reset_token_expires_at DateTime?
   theme       String   @default("system")
+  muted_notification_types String[] @default([])
   dashboard_layout Json?
   report_layout    Json?
   kpi_layout       Json?
@@ -2741,6 +2762,8 @@ model dispatcher {
 
   opened_disputes   document_dispute[] @relation("DisputeOpener")
   resolved_disputes document_dispute[] @relation("DisputeResolver")
+  
+  notifications      dispatcher_notification[]
 
   @@index([email])
   @@index([organization_id])

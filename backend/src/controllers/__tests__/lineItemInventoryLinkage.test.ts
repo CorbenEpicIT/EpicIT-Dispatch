@@ -52,6 +52,7 @@ vi.mock("../../services/socketService.js", () => ({
 
 vi.mock("../notificationsController.js", () => ({
 	createNotification: vi.fn().mockResolvedValue(undefined),
+	notifyDispatchers: vi.fn().mockResolvedValue([]),
 }));
 
 const ORG = "org-1";

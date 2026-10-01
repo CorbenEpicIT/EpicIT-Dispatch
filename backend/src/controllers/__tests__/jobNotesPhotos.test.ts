@@ -13,7 +13,10 @@ vi.mock("../../services/wasabiService.js", () => ({
 	deleteFile: vi.fn(async () => undefined),
 	isOwnBucketUrl: () => true,
 }));
-vi.mock("../notificationsController.js", () => ({ createNotification: vi.fn() }));
+vi.mock("../notificationsController.js", () => ({
+	createNotification: vi.fn(),
+	notifyDispatchers: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("../../services/socketService.js", () => ({ getSocket: vi.fn(() => ({ emit: vi.fn() })) }));
 
 import { db } from "../../db.js";

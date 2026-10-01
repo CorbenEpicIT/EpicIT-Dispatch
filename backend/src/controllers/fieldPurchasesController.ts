@@ -30,9 +30,10 @@ interface PurchaseExtraction {
 	header: ExtractedHeader | null;
 }
 import { emitInventoryUpdated, emitToOrg } from "../services/socketService.js";
-import { createNotification } from "./notificationsController.js";
+import { createNotification, notifyDispatchers } from "./notificationsController.js";
 import { assertInventoryItemsInOrg, assertDispositionVehiclesInOrg } from "../lib/inventory.js";
 import { recomputeVisitTotals } from "../lib/recomputeDocumentTotals.js";
+import { formatCurrency } from "../lib/money.js";
 import {
 	checkLimits,
 	COUNTED_SPEND_STATUSES,
@@ -753,6 +754,12 @@ export async function requestGrant(
 			`${tech?.name ?? "A technician"} asked to be allowed to buy parts in the field`,
 		);
 		emitToOrg(orgId, "field_purchase:grant_requested", { technicianId: techId });
+		notifyDispatchers({
+			type: "field_purchase_grant_requested",
+			title: `${tech?.name ?? "A technician"} asked for purchasing authority`,
+			body: "They want to be allowed to buy parts in the field.",
+			actionUrl: "/dispatch/purchases",
+		}, orgId).catch(() => {});
 		return { requested: true };
 	} catch (err) {
 		return toErr(err);
@@ -2184,6 +2191,12 @@ export async function requestPreauth(
 		});
 
 		emitToOrg(orgId, "field_purchase:preauth_requested", { id: purchaseId });
+		notifyDispatchers({
+			type: "field_purchase_preauth_requested",
+			title: `${purchase.technician?.name ?? "A technician"} needs pre-approval`,
+			body: `Estimated ${formatCurrency(toDecimal(purchase.estimated_amount).toNumber())}${purchase.reason ? ` — ${purchase.reason}` : ""}.`,
+			actionUrl: "/dispatch/purchases",
+		}, orgId).catch(() => {});
 		return { purchase: await shapePurchase(purchase) };
 	} catch (err) {
 		return toErr(err);
@@ -2255,7 +2268,7 @@ export async function decidePreauth(
 				? `Go ahead with the purchase up to ${toDecimal(existing.estimated_amount).toFixed(2)}.`
 				: (parsed.note ?? "Dispatch did not approve this purchase."),
 			actionUrl: `/technician/purchases/${purchaseId}`,
-		});
+		}, orgId);
 		// Nothing was emitted here at all, so the technician holding the answer and
 		// any second dispatcher watching the queue learned of the decision only by
 		// reloading.
@@ -2770,6 +2783,12 @@ export async function submitPurchase(
 
 		await logPurchaseActivity(orgId, "field_purchase", purchaseId, "submitted", "updated", context);
 		emitToOrg(orgId, "field_purchase:submitted", { id: purchaseId });
+		notifyDispatchers({
+			type: "field_purchase_submitted",
+			title: `${purchase.row.technician?.name ?? "A technician"} submitted a purchase`,
+			body: `${formatCurrency(toDecimal(purchase.row.total).toNumber())}${purchase.row.vendor_name ? ` at ${purchase.row.vendor_name}` : ""} is waiting for review.`,
+			actionUrl: "/dispatch/purchases",
+		}, orgId).catch(() => {});
 		// The customer's charge is raised at submit, not at approval, so the visit's
 		// line items and totals have already moved for anyone with that job open.
 		for (const visitId of billedVisitIds(existing.allocations)) {
@@ -3184,10 +3203,19 @@ export async function reviewPurchase(
 			technicianId: existing.technician_id,
 			type: "field_purchase_reviewed",
 			title: titles[parsed.decision],
-			body: parsed.note ?? `Your ${toDecimal(existing.total).toFixed(2)} purchase was ${outcome}.`,
+			body: parsed.note ?? `Your ${formatCurrency(toDecimal(existing.total).toNumber())} purchase was ${outcome}.`,
 			actionUrl: `/technician/purchases/${purchaseId}`,
-		});
+		}, orgId);
 		emitToOrg(orgId, "field_purchase:reviewed", { id: purchaseId, status });
+		if (needsSecondSignoff) {
+			// Excludes the first approver, who can't give the second signature
+			notifyDispatchers({
+				type: "field_purchase_second_signoff",
+				title: "Purchase needs a second sign-off",
+				body: `A ${formatCurrency(toDecimal(existing.total).toNumber())} purchase was approved once and needs a second signature.`,
+				actionUrl: "/dispatch/purchases",
+			}, orgId, context?.dispatcherId).catch(() => {});
+		}
 		// Approving is the write that moves stock — warehouse, vehicles, the item
 		// ledger and the vendor price list all shift, and every other stock-writing
 		// controller says so. Rejecting instead takes the charge back off the visit.
@@ -3459,7 +3487,7 @@ export async function secondSignoff(
 				parsed.note ??
 				`Your ${toDecimal(existing.total).toFixed(2)} purchase was ${status} at second sign-off.`,
 			actionUrl: `/technician/purchases/${purchaseId}`,
-		});
+		}, orgId);
 		emitToOrg(orgId, "field_purchase:reviewed", { id: purchaseId, status });
 		// The stock effect was held back for this signature, so it lands here rather
 		// than at the first approval. A refusal unbills instead.

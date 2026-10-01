@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { utcDayRange, localDateString } from "../dayRange.js";
+import { utcDayRange, localDateString, localTimeOnDay } from "../dayRange.js";
 
 describe("utcDayRange", () => {
 	it("keeps UTC behaviour byte-identical when no timezone is asked for", () => {
@@ -65,5 +65,29 @@ describe("localDateString", () => {
 
 	it("defaults to UTC", () => {
 		expect(localDateString(new Date("2026-08-21T23:00:00Z"))).toBe("2026-08-21");
+	});
+});
+
+describe("localTimeOnDay", () => {
+	it("resolves a wall-clock time in CDT", () => {
+		const d = localTimeOnDay(new Date("2026-10-01T13:00:00Z"), "10:30", "America/Chicago");
+		expect(d.toISOString()).toBe("2026-10-01T15:30:00.000Z");
+	});
+
+	it("uses CST after the fall-back, not the offset of the night before", () => {
+		// DST ended 02:00 local on 2026-11-01
+		const d = localTimeOnDay(new Date("2026-11-01T14:00:00Z"), "10:30", "America/Chicago");
+		expect(d.toISOString()).toBe("2026-11-01T16:30:00.000Z");
+	});
+
+	it("keeps an evening visit on its local day, not the UTC day", () => {
+		// 7 PM CDT on Oct 1 is 00:00Z Oct 2
+		const d = localTimeOnDay(new Date("2026-10-02T00:00:00Z"), "19:45", "America/Chicago");
+		expect(d.toISOString()).toBe("2026-10-02T00:45:00.000Z");
+	});
+
+	it("works with UTC", () => {
+		const d = localTimeOnDay(new Date("2026-10-01T23:00:00Z"), "08:05", "UTC");
+		expect(d.toISOString()).toBe("2026-10-01T08:05:00.000Z");
 	});
 });

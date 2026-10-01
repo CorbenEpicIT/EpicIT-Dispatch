@@ -107,6 +107,7 @@ vi.mock("../../lib/recomputeDocumentTotals.js", () => ({
 const mockNotify = vi.fn().mockResolvedValue(undefined);
 vi.mock("../notificationsController.js", () => ({
 	createNotification: (...args: unknown[]) => mockNotify(...args),
+	notifyDispatchers: vi.fn().mockResolvedValue([]),
 }));
 
 const ORG = "org-1";
@@ -1199,6 +1200,7 @@ describe("review", () => {
 		expect(mockRecordMovements).not.toHaveBeenCalled();
 		expect(mockNotify).toHaveBeenCalledWith(
 			expect.objectContaining({ technicianId: TECH, title: "Purchase rejected" }),
+			ORG,
 		);
 	});
 
@@ -1228,6 +1230,7 @@ describe("review", () => {
 		expect(mockRecordMovements).not.toHaveBeenCalled();
 		expect(mockNotify).toHaveBeenCalledWith(
 			expect.objectContaining({ technicianId: TECH, title: "Purchase rejected" }),
+			ORG,
 		);
 	});
 

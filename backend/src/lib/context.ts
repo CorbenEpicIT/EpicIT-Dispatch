@@ -108,6 +108,8 @@ const RELATION_SCOPED_MODELS: Record<string, (organizationId: string) => Record<
 	field_purchase_job_allocation: (o) => ({ field_purchase: { organization_id: o } }),
 	assistant_message: (o) => ({ conversation: { organization_id: o } }),
 	assistant_tool_call: (o) => ({ message: { conversation: { organization_id: o } } }),
+	technician_notification: (o) => ({ technician: { organization_id: o } }),
+	dispatcher_notification: (o) => ({ dispatcher: { organization_id: o } }),
 };
 
 // Returns the where-fragment that pins a row to the caller's org, or null if the

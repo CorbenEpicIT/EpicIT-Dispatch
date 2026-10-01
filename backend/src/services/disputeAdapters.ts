@@ -1,20 +1,10 @@
 import type { Prisma } from "../../generated/prisma/client.js";
+import { formatCurrency } from "../lib/money.js";
 
 export type DisputeKind = "quote" | "invoice";
 export type Outcome = "ReviseAndResend" | "IssueAdjustment" | "Repeal";
 
-/**
- * Ruling P11 requires this file's disabled-outcome copy to be byte-identical to
- * the frontend's. `toFixed(2)` diverges from the frontend at $1,000 ("$1000.00"
- * vs "$1,000.00"), so match frontend/src/util/util.ts's formatCurrency exactly.
- */
-const formatCurrency = (amount: number) =>
-	new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-		minimumFractionDigits: 2,
-		maximumFractionDigits: 2,
-	}).format(amount);
+// Ruling P11: disabled-outcome copy must be byte-identical to the frontend's, hence formatCurrency
 
 /**
  * Money, not status, decides whether an invoice may be voided — so the rule and

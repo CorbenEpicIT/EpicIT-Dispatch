@@ -25,7 +25,7 @@ import { fireLowStockAlerts } from "../services/lowStockAlerts.js";
 import { expiresAtField } from "../lib/validate/inventoryTracking.js";
 import { READINESS_LINE_ITEM_WHERE } from "../lib/inventory.js";
 import { isStorableStockQty, STOCK_QTY_MESSAGE } from "../lib/validate/shared.js";
-import { emitToOrg, emitInventoryUpdated } from "../services/socketService.js";
+import { emitInventoryUpdated } from "../services/socketService.js";
 import { recomputeVisitTotals } from "../lib/recomputeDocumentTotals.js";
 import {
 	mapVehicleStockItemWithInventory,
@@ -40,6 +40,7 @@ import { createMaintenanceRecordSchema, createMaintenanceReminderSchema, updateM
 import { classifyReminder, resolveDueTargets } from "../lib/validate/vehicleMaintenanceStatus.js";
 import { applyRecordOdometer } from "../lib/vehicleMileage.js";
 import { parentBreadcrumb } from "./logsController.js";
+import { notifyDispatchers } from "./notificationsController.js";
 
 // Stock-item quantities nested under a restock request only carry a partial
 // inventory_item select (id/name/unit/quantity, no Decimal fields) — convert
@@ -793,6 +794,17 @@ export const deleteVehicleStockItem = async (vehicleId: string, itemId: string, 
 	}
 };
 
+// Shared by the single and bulk restock request paths
+async function notifyRestockRequested(vehicleId: string, orgId: string, count: number) {
+	const vehicle = await db.vehicle.findFirst({ where: { id: vehicleId, organization_id: orgId }, select: { name: true } });
+	await notifyDispatchers({
+		type: "vehicle_restock_requested",
+		title: `Restock requested — ${vehicle?.name ?? "a vehicle"}`,
+		body: `${count} item${count === 1 ? "" : "s"} requested.`,
+		actionUrl: `/dispatch/vehicles/${vehicleId}/stock`,
+	}, orgId);
+}
+
 export const createRestockRequest = async (
 	vehicleId: string,
 	itemId: string,
@@ -843,6 +855,7 @@ export const createRestockRequest = async (
 				status:        { old: null, new: request.status },
 			},
 		});
+		notifyRestockRequested(vehicleId, organizationId, 1).catch(() => {});
 		return { err: "", item: request };
 	} catch (e: unknown) {
 		if (e instanceof ZodError) return { err: `Validation failed: ${formatZodError(e)}` };
@@ -948,6 +961,7 @@ export async function createRestockRequestsBulk(
 				actor_id: technicianId,
 				changes: { batch_count: { old: null, new: result.created.length } },
 			});
+			notifyRestockRequested(vehicleId, orgId, result.created.length).catch(() => {});
 		}
 		return { err: "", created: result.created, skipped: result.skipped };
 	} catch (e: unknown) {
@@ -2104,20 +2118,15 @@ export async function completeRestock(
 				select: { id: true, inventory_item: { select: { name: true } } },
 			});
 			const nameByStockItemId = new Map(shortfallStockItems.map((s) => [s.id, s.inventory_item.name]));
-			try {
-				emitToOrg(orgId, "vehicle:restock_shortfall", {
-					organizationId: orgId,
-					vehicleId,
-					vehicle_name: vehicle.name,
-					date: localDateString(new Date(), orgTz),
-					shortfalls: shortfallLines.map((l) => ({
-						name: nameByStockItemId.get(l.stock_item_id) ?? "Unknown item",
-						qty_shortfall: Number(l.qty_shortfall),
-					})),
-				});
-			} catch {
-				// no-op — same "socket not initialized" tolerance as emitInventoryUpdated
-			}
+			const items = shortfallLines.map(
+				(l) => `${nameByStockItemId.get(l.stock_item_id) ?? "Unknown item"} (-${Number(l.qty_shortfall)})`,
+			);
+			notifyDispatchers({
+				type: "restock_shortfall",
+				title: `Restock shortfall — ${vehicle.name}`,
+				body: `Couldn't fully restock: ${items.slice(0, 3).join(", ")}${items.length > 3 ? ` and ${items.length - 3} more` : ""}.`,
+				actionUrl: `/dispatch/vehicles/${vehicleId}/stock`,
+			}, orgId).catch(() => {});
 		}
 
 		// G10: zero-shortfall EOD auto-confirms readiness for tomorrow

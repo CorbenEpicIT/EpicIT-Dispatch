@@ -8,7 +8,7 @@ import { logActivity, buildChanges } from "../services/logger.js";
 import { parentBreadcrumb } from "./logsController.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { log } from "../services/appLogger.js";
-import { createNotification } from "./notificationsController.js";
+import { createNotification, notifyDispatchers } from "./notificationsController.js";
 import { getSocket } from "../services/socketService.js";
 import { signImageUrl, deleteFile } from "../services/wasabiService.js";
 
@@ -219,6 +219,16 @@ export const insertJobNote = async (
 					actionUrl:    `/technician/visits/${created.visit_id}`,
 				}, organizationId);
 			}
+		}
+
+		if (context?.techId) {
+			const job = await sdb.job.findFirst({ where: { id: jobId }, select: { job_number: true } });
+			notifyDispatchers({
+				type: "tech_note_added",
+				title: `Technician note on Job ${job?.job_number ?? ""}`.trim(),
+				body: parsed.content.slice(0, 200),
+				actionUrl: `/dispatch/jobs/${jobId}`,
+			}, organizationId).catch(() => {});
 		}
 
 		getSocket().emit("job_note:created", { organizationId });

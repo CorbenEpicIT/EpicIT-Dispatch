@@ -51,16 +51,28 @@ function offsetMsAt(at: Date, timezone: string): number {
  * and day overflow the way Date.UTC allows, so callers can add days directly.
  */
 function localMidnight(year: number, month: number, day: number, timezone: string): Date {
+	return localWallClock(year, month, day, 0, 0, timezone);
+}
+
+// generalized local midnight
+function localWallClock(year: number, month: number, day: number, hour:number, minute: number, timezone: string): Date {
 	// Guessed as if the zone were UTC, then corrected by the offset actually in
 	// force. The correction is re-checked once because the guess can land on the
 	// wrong side of a DST transition; one repeat settles every zone whose midnight
 	// exists. In a zone whose DST gap starts at midnight (e.g. America/Havana),
 	// midnight itself is skipped, and the settled instant resolves to the moment
 	// just before the gap — the last real instant of that calendar date.
-	const asIfUtc = Date.UTC(year, month, day);
+	const asIfUtc = Date.UTC(year, month, day, hour, minute);
 	const firstGuess = asIfUtc - offsetMsAt(new Date(asIfUtc), timezone);
 	const settled = offsetMsAt(new Date(firstGuess), timezone);
 	return new Date(asIfUtc - settled);
+}
+
+// `hhmm` on the calendar day `at` falls on in `timezone`, as an instant
+export function localTimeOnDay(at: Date, hhmm: string, timezone: string): Date {
+	const { year, month, day } = localParts(at, timezone);
+	const [hour, minute] = hhmm.split(":").map(Number);
+	return localWallClock(year, month, day, hour, minute, timezone);
 }
 
 /**

@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Server } from "socket.io";
 import { db } from "../../db.js";
-import { createNotification, setSocketIo } from "../notificationsController.js";
+import { createNotification, notifyDispatchers, setSocketIo } from "../notificationsController.js";
 
 vi.mock("../../db.js", () => ({
 	db: {
 		technician_notification: { create: vi.fn() },
+		dispatcher: { findMany: vi.fn() },
+		dispatcher_notification: { create: vi.fn() },
 	},
 }));
+
+vi.mock("../../lib/context.js", () => ({ getScopedDb: () => db }));
 
 vi.mock("../../services/appLogger.js", () => ({
 	log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -41,7 +45,7 @@ describe("createNotification", () => {
 			type: "field_purchase_reviewed",
 			title: "Purchase approved",
 			body: "Your receipt was approved.",
-		});
+		}, "org-1");
 
 		expect(created).not.toBeNull();
 	});
@@ -54,8 +58,35 @@ describe("createNotification", () => {
 			type: "field_purchase_reviewed",
 			title: "Purchase approved",
 			body: "Your receipt was approved.",
-		});
+		}, "org-1");
 
 		expect(created).toBeNull();
+	});
+});
+
+describe("notifyDispatchers", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		setSocketIo({ to: () => ({ emit: vi.fn() }) } as unknown as Server);
+	});
+
+	it("skips muted, unpermitted and excluded dispatchers, notifies the rest", async () => {
+		mockDb.dispatcher.findMany.mockResolvedValue([{ id: "disp-1" }, { id: "disp-2" }] as never);
+		mockDb.dispatcher_notification.create.mockResolvedValue({ id: "n" } as never);
+
+		await notifyDispatchers(
+			{ type: "job_finished", title: "Job finished", body: "J-0001 is done." },
+			"org-1",
+			"disp-3",
+		);
+
+		const where = mockDb.dispatcher.findMany.mock.calls[0]![0]!.where;
+		expect(where).toEqual({
+			NOT: { muted_notification_types: { has: "job_finished" } },
+			OR: [{ role: "admin" }, { organization_role: { permissions: { has: "view_jobs" } } }],
+			id: { not: "disp-3" },
+		});
+		const ids = mockDb.dispatcher_notification.create.mock.calls.map((c) => c[0].data.dispatcher_id);
+		expect(ids).toEqual(["disp-1", "disp-2"]);
 	});
 });

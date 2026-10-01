@@ -12,6 +12,7 @@ import { startVisitReminderInterval } from "./services/notifications.js";
 import { startInvoiceSchedulerInterval } from "./services/invoiceScheduler.js";
 import { startFollowupSchedulerInterval } from "./services/followupScheduler.js";
 import { startMaintenanceReminderInterval } from "./services/vehicleMaintenanceScheduler.js";
+import { startLateArrivalInterval } from "./services/lateArrivalScheduler.js";
 import { rearmWrappingUpTimers } from "./services/wrappingUpTimer.js";
 import multer from "multer";
 import {
@@ -59,7 +60,7 @@ import fieldPurchasesRouter from "./routes/fieldPurchases.js";
 import purchasesRouter from "./routes/purchases.js";
 import techniciansRouter from "./routes/technicians.js";
 import vehiclesRouter from "./routes/vehicles.js";
-import notificationsRouter from "./routes/notifications.js";
+import notificationsRouter, { dispatcherNotificationsRouter } from "./routes/notifications.js";
 import taxRouter from "./routes/tax.js";
 import organizationRolesRouter from "./routes/organizationRoles.js";
 import quickbooksRouter from "./routes/quickbooks.js";
@@ -286,6 +287,7 @@ startVisitReminderInterval();
 startInvoiceSchedulerInterval();
 startFollowupSchedulerInterval();
 startMaintenanceReminderInterval();
+startLateArrivalInterval();
 rearmWrappingUpTimers().catch((e) =>
 	log.error(e, "Failed to rearm WrappingUp timers"),
 );
@@ -299,16 +301,23 @@ io.use((socket, next) => {
 		const claims = verifyAccessToken(token);
 		socket.data.orgId = claims.organization_id ?? undefined;
 		socket.data.techId = claims.role === "technician" ? claims.uid : undefined;
+		socket.data.dispatcherId =
+			claims.role === "dispatcher" || claims.role === "admin" ? claims.uid : undefined;
 		next();
 	} catch {
 		next(new Error("Unauthorized"));
 	}
 });
 
-// Each technician joins their personal room; all clients join their org room
+// Each technician/dispatcher joins their personal room; all clients join their org room
 io.on("connection", (socket) => {
-	const { orgId, techId } = socket.data as { orgId?: string; techId?: string };
+	const { orgId, techId, dispatcherId } = socket.data as {
+		orgId?: string;
+		techId?: string;
+		dispatcherId?: string;
+	};
 	if (techId) socket.join(`tech:${techId}`);
+	if (dispatcherId) socket.join(`dispatcher:${dispatcherId}`);
 	if (orgId) socket.join(`org:${orgId}`);
 });
 
@@ -572,6 +581,7 @@ app.use("/technicians", verifyToken, notificationsRouter);
 // DISPATCHERS
 // ============================================
 app.use("/dispatchers", verifyToken, dispatchersRouter);
+app.use("/dispatchers", verifyToken, dispatcherNotificationsRouter);
 
 // ============================================
 // Email

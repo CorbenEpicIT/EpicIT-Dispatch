@@ -34,6 +34,8 @@ export function startMaintenanceReminderInterval(): void {
 
             if (dueReminders.length === 0) return;
 
+            // -- Technician Notifications ------------------------------------------------------------------------
+
             // Keyed per reminder so a second one going due still notifies.
             const actionUrls = dueReminders.map(({ reminder }) => `/technician/vehicles?reminder=${reminder.id}`);
             const existingNotifications = await db.technician_notification.findMany({
@@ -57,9 +59,36 @@ export function startMaintenanceReminderInterval(): void {
                         title: `${reminder.title} ${urgency} — ${reminder.vehicle.name}`,
                         body: `${reminder.vehicle.name}'s ${reminder.title.toLowerCase()} is ${urgency}.`,
                         actionUrl,
-                    });
+                    }, reminder.organization_id);
                 }
             }
+
+            // -- Dispatcher Notifications ---------------------------------------------------------------------------
+            // Keyed per reminder; once any dispatcher got it, it's sent
+            const dispatcherUrl = (r: { id: string; vehicle_id: string }) =>
+                `/dispatch/vehicles/${r.vehicle_id}/stock?reminder=${r.id}`;
+            const existingDispatcherNotifications = await db.dispatcher_notification.findMany({
+                where: {
+                    type: "vehicle_maintenance_due",
+                    action_url: { in: dueReminders.map(({ reminder }) => dispatcherUrl(reminder)) },
+                },
+                select: { action_url: true },
+            });
+            const sentDispatcherUrls = new Set(existingDispatcherNotifications.map((n) => n.action_url));
+
+            for (const { reminder, status } of dueReminders) {
+                const actionUrl = dispatcherUrl(reminder);
+                if (sentDispatcherUrls.has(actionUrl)) continue;
+                const urgency = status === "overdue" ? "overdue" : "due soon";
+
+                await notificationsController.notifyDispatchers({
+                    type: "vehicle_maintenance_due",
+                    title: `${reminder.title} ${urgency} — ${reminder.vehicle.name}`,
+                    body: `${reminder.vehicle.name}'s ${reminder.title.toLowerCase()} is ${urgency}.`,
+                    actionUrl,
+                }, reminder.organization_id);
+            }
+
         } catch (e) {
             log.error({ err: e }, "Maintenance reminder interval failed");
         } finally {

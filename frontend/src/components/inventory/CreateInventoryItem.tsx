@@ -40,6 +40,7 @@ import BatchCaptureFields, { type BatchCaptureValue } from "./tracking/BatchCapt
 import SupplierPicker from "./SupplierPicker";
 import type { SupplierCapture } from "../../types/suppliers";
 import UnitSelect from "../ui/forms/UnitSelect";
+import ToggleSwitch from "../ui/ToggleSwitch";
 import {
 	DEFAULT_UNIT_CODE,
 	formatQty,
@@ -171,42 +172,6 @@ function getApiErrorMessage(e: unknown, fallback: string): string {
 function seedUnit(stored: string | null | undefined): string {
 	const raw = typeof stored === "string" ? stored.trim() : "";
 	return normalizeUnitCode(raw) ?? (raw || DEFAULT_UNIT_CODE);
-}
-
-// Shared role="switch" toggle markup used for every on/off control in this
-// form (tracking toggles, low-stock alert, email alerts).
-function ToggleSwitch({
-	checked,
-	onChange,
-	disabled,
-	label,
-	ariaLabel,
-}: {
-	checked: boolean;
-	onChange: () => void;
-	disabled?: boolean;
-	label?: string;
-	ariaLabel?: string;
-}) {
-	return (
-		<button
-			type="button"
-			role="switch"
-			aria-checked={checked}
-			aria-label={ariaLabel ?? label}
-			onClick={onChange}
-			disabled={disabled}
-			className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-				checked ? "bg-primary-hover" : "bg-surface-raised"
-			}`}
-		>
-			<span
-				className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-					checked ? "translate-x-4.5" : "translate-x-0.5"
-				}`}
-			/>
-		</button>
-	);
 }
 
 export default function CreateInventoryItem({

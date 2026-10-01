@@ -60,7 +60,9 @@ export default function ToastViewport({ inset = "default" }: { inset?: "default"
 				return (
 					<div
 						key={toast.id}
-						className={`bg-surface border rounded-lg shadow-lg px-4 py-3 flex gap-3 ${borderClass}`}
+						className={`bg-surface border rounded-lg shadow-lg px-4 py-3 flex gap-3 transition duration-200 ease-out starting:opacity-0 starting:translate-y-2 motion-reduce:transition-none ${
+							toast.leaving ? "opacity-0 translate-x-4 pointer-events-none" : ""
+						} ${borderClass}`}
 					>
 						{toast.icon ?? (
 							<Icon size={16} className={`${iconClass} flex-shrink-0 mt-0.5`} />

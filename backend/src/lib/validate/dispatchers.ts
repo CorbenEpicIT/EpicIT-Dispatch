@@ -2,6 +2,25 @@ import z from "zod";
 
 const DispatcherRole = z.enum(["dispatcher", "admin"]);
 
+export const DispatcherNotificationTypeEnum = z.enum([
+	"vehicle_maintenance_due",
+	"job_finished",
+	"followup_email_opened",
+	"field_purchase_preauth_requested",
+	"field_purchase_submitted",
+	"field_purchase_second_signoff",
+	"field_purchase_grant_requested",
+	"visit_delayed",
+	"tech_running_late",
+	"restock_shortfall",
+	"vehicle_restock_requested",
+	"dispute_opened",
+	"tech_note_added",
+	"invoice_paid",
+	"quote_accepted",
+	"quote_declined",
+]);
+
 const reportLayoutSchema = z.record(
 	z.string(),
 	z.object({ order: z.array(z.string()), hidden: z.array(z.string()) }),
@@ -46,6 +65,7 @@ export const updateDispatcherSchema = z
 		description: z.string().optional(),
 		role: DispatcherRole.optional(),
 		theme: z.enum(["dark", "light", "system"]).optional(),
+		muted_notification_types: z.array(DispatcherNotificationTypeEnum).optional(),
 		last_login: z
 			.preprocess(
 				(val) =>
@@ -69,6 +89,7 @@ export const updateDispatcherSchema = z
 			data.description !== undefined ||
 			data.role !== undefined ||
 			data.theme !== undefined ||
+			data.muted_notification_types !== undefined ||
 			data.last_login !== undefined ||
 			data.dashboard_layout !== undefined ||
 			data.report_layout !== undefined ||

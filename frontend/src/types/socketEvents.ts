@@ -45,10 +45,4 @@ export interface FieldPurchaseGrantRequestedEvent {
 	technicianId: string;
 }
 
-export interface VehicleRestockShortfallEvent {
-	vehicle_name: string;
-	date: string;
-	shortfalls: { name: string; qty_shortfall: number }[];
-}
-
 export type { VisitStatusEvent };

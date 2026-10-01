@@ -1,6 +1,6 @@
 ﻿import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "../auth/authStore";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	House,
 	Calendar,
@@ -20,6 +20,7 @@ import {
 	Plus,
 	Mail,
 	FolderKanban,
+	Bell,
 } from "lucide-react";
 import SideNavItem from "../components/nav/SideNavItem";
 import GlobalSearch from "../components/nav/GlobalSearch";
@@ -30,10 +31,10 @@ import AssistantPanel from "../components/assistant/AssistantPanel";
 import AssistantTrigger from "../components/assistant/AssistantTrigger";
 import ToastViewport from "../components/ui/ToastViewport";
 import { useToast } from "../components/ui/useToast";
-import { socket } from "../lib/socket";
 import { useOrgSettings } from "../hooks/useOrg";
 import { useSocketQuerySync } from "../hooks/useSocketQuerySync";
-import type { VehicleRestockShortfallEvent } from "../types/socketEvents";
+import { useDispatcherNotificationsQuery } from "../hooks/useNotifications";
+import type { DispatcherNotification } from "../types/notifications";
 
 export default function DispatchLayout() {
 	const navigate = useNavigate();
@@ -46,6 +47,24 @@ export default function DispatchLayout() {
 	const navRef = useRef<HTMLElement>(null);
 	const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 	const { user } = useAuthStore();
+
+	const handleNewNotification = useCallback((notif: DispatcherNotification) => {
+		toast.info(
+			<>
+				<div className="font-semibold">{notif.title}</div>
+				{notif.body && <div className="text-xs text-text-muted mt-0.5">{notif.body}</div>}
+			</>,
+			{
+				durationMs: 20_000,
+				action: notif.action_url
+					? { label: "View", onClick: () => navigate(notif.action_url!) }
+					: undefined,
+			},
+		);
+	}, [toast, navigate]);
+
+	const { data: notifications = [] } = useDispatcherNotificationsQuery(user?.userId ?? null, false, handleNewNotification);
+	const unreadCount = notifications.filter((n) => !n.read_at).length;
 
 	const canViewRequests = usePermission("view_requests");
 	const canViewQuotes = usePermission("view_quotes");
@@ -70,37 +89,6 @@ export default function DispatchLayout() {
 	const canViewProjects = usePermission("view_projects");
 
 	useSocketQuerySync();
-
-	useEffect(() => {
-		const handler = (event: VehicleRestockShortfallEvent) => {
-			toast.warning(
-				<>
-					<div className="text-sm font-semibold text-text-primary">
-						Restock shortfall — {event.vehicle_name}
-					</div>
-					<div className="text-xs text-text-muted mt-0.5">
-						{event.date}
-					</div>
-					<ul className="mt-1 space-y-0.5">
-						{event.shortfalls.map((s, i) => (
-							<li
-								key={i}
-								className="text-xs text-warning-text"
-							>
-								{s.name}: -{s.qty_shortfall}
-							</li>
-						))}
-					</ul>
-				</>,
-				{ durationMs: 12000 }
-			);
-		};
-		socket.on("vehicle:restock_shortfall", handler);
-		return () => {
-			socket.off("vehicle:restock_shortfall", handler);
-		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
 
 	// The nav's scrollbar is hidden by design (.sidebar-nav), so overflow past the
 	// fold needs its own cue. Two observers: the nav's own box changes with the
@@ -374,6 +362,19 @@ export default function DispatchLayout() {
 					{/* RIGHT SIDE */}
 					<div className="flex items-center gap-3">
 						<GlobalSearch />
+						{/* Bell / notifications icon */}
+						<button
+							onClick={() => navigate("/dispatch/notifications")}
+							className="relative flex items-center justify-center w-9 h-9 rounded-lg hover:bg-surface-raised transition-colors hover:cursor-pointer"
+							title="Notifications"
+						>
+							<Bell size={20} className="text-text-tertiary" />
+							{unreadCount > 0 && (
+								<span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 rounded-full bg-error text-on-primary text-[9px] font-bold leading-none">
+									{unreadCount > 9 ? "9+" : unreadCount}
+								</span>
+							)}
+						</button>
 						<AssistantTrigger
 							onClick={() => setIsAssistantOpen(true)}
 						/>

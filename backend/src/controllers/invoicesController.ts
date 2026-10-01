@@ -3,6 +3,7 @@ import { db } from "../db.js";
 import { getScopedDb, type UserContext } from "../lib/context.js";
 import { findForeignInventoryItemIds, unknownInventoryItemsMessage } from "../lib/inventory.js";
 import { resolveDocumentLineage } from "../lib/documentLineage.js";
+import { formatCurrency } from "../lib/money.js";
 import { isQBConnected, getOrgRealmId } from "../services/quickbooksService.js";
 import { mirrorInvoiceVoidToQuickBooks, pushInvoice } from "../services/qb/qbInvoices.js"
 import {
@@ -41,6 +42,7 @@ import {
 } from "../services/invoiceService.js";
 import { logExternalSync } from "../services/qb/qbSyncLog.js";
 import { pushPaymentToQB, deleteQBPayment } from "../services/qb/qbPayments.js"
+import { notifyDispatchers } from "./notificationsController.js";
 
 // ============================================================================
 // INVOICE CRUD
@@ -805,6 +807,13 @@ export const insertInvoicePayment = async (
 			ip_address: context?.ipAddress,
 			user_agent: context?.userAgent,
 		});
+
+		notifyDispatchers({
+			type: "invoice_paid",
+			title: `Payment on Invoice ${outcome.invoiceNumber}`,
+			body: `${formatCurrency(parsed.amount)} recorded${parsed.method ? ` by ${parsed.method}` : ""}.`,
+			actionUrl: `/dispatch/invoices/${invoiceId}`,
+		}, organizationId, context?.dispatcherId).catch(() => {});
 
 		isQBConnected(organizationId)
 		.then((connected) => (connected ? pushPaymentToQB(created.id, organizationId) : null))

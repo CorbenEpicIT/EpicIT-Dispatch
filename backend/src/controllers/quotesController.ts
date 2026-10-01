@@ -15,9 +15,11 @@ import { getScopedDb, type UserContext } from "../lib/context.js";
 import { fillCoords } from "../lib/geocode.js";
 import { assertInventoryItemsInOrg } from "../lib/inventory.js";
 import { resolveDocumentLineage } from "../lib/documentLineage.js";
+import { formatCurrency } from "../lib/money.js";
 import { SOLD_BY_QUOTE_JOBS } from "../services/disputeAdapters.js";
 import { quoteDetailInclude } from "../services/quoteService.js";
 import { openDisputeStatusChangeRefusal } from "../services/disputeService.js";
+import { notifyDispatchers } from "./notificationsController.js";
 import { db, generateQuoteNumber } from "../db.js";
 import {
 	centsToDollars,
@@ -788,6 +790,18 @@ export const updateQuote = async (req: Request, organizationId: string, context?
 
 			return quote;
 		});
+
+		if (parsed.status !== existing.status && (parsed.status === "Approved" || parsed.status === "Rejected")) {
+			const approved = parsed.status === "Approved";
+			notifyDispatchers({
+				type: approved ? "quote_accepted" : "quote_declined",
+				title: `Quote ${existing.quote_number} ${approved ? "accepted" : "declined"}`,
+				body: approved
+					? `${formatCurrency(Number(existing.total))} quote was accepted.`
+					: (parsed.rejection_reason ?? "The client declined the quote."),
+				actionUrl: `/dispatch/quotes/${quoteId}`,
+			}, organizationId, context?.dispatcherId).catch(() => {});
+		}
 
 		return { err: "", item: updated };
 	} catch (e) {

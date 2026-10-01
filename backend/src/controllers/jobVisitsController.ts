@@ -14,7 +14,7 @@ import { log } from "../services/appLogger.js";
 import { deductInventoryForVisit } from "./inventoryController.js";
 import { onVisitScheduled, onVisitRescheduled, onVisitCancelled } from "../services/followupTriggers.js";
 import { fireLowStockAlerts } from "../services/lowStockAlerts.js";
-import { createNotification } from "./notificationsController.js";
+import { createNotification, notifyDispatchers } from "./notificationsController.js";
 import { getSocket } from "../services/socketService.js";
 import { buildRecurringPlanInvoicePayload } from "../services/invoiceGenerator.js";
 import { createInvoiceRecord } from "../services/invoiceService.js";
@@ -1444,6 +1444,7 @@ export const applyVisitTransition = async (
 		}
 
 		let deductLowStockIds: string[] = [];
+		let jobJustCompleted = false;
 		await sdb.$transaction(async (tx) => {
 			await tx.job_visit.update({
 				where: { id },
@@ -1512,6 +1513,7 @@ export const applyVisitTransition = async (
 					where: { id: existingVisit.job_id },
 					data: { status: newJobStatus, status_changed_at: new Date() },
 				});
+				jobJustCompleted = newJobStatus === "Completed";
 			}
 
 			// ── Inventory consumption (once, on this visit's Completed transition) ──
@@ -1731,6 +1733,24 @@ export const applyVisitTransition = async (
 				"job_visit:status_changed",
 				buildVisitStatusPayload(updated, existingVisit.status, true, context),
 			);
+		}
+
+		if (jobJustCompleted && updated) {
+			notifyDispatchers({
+				type: "job_finished",
+				title: `Job ${existingVisit.job.job_number} finished`,
+				body: `${updated.job.client.name}: all visits are complete.`,
+				actionUrl: `/dispatch/jobs/${existingVisit.job_id}`,
+			}, organizationId, context?.dispatcherId).catch(() => {});
+		}
+
+		if (action === "delay" && updated) {
+			notifyDispatchers({
+				type: "visit_delayed",
+				title: `Visit delayed — Job ${existingVisit.job.job_number}`,
+				body: `${updated.job.client.name}'s visit was marked delayed.`,
+				actionUrl: `/dispatch/jobs/${existingVisit.job_id}/visits/${id}`,
+			}, organizationId, context?.dispatcherId).catch(() => {});
 		}
 
 		if (action === "drive" && updated) {

@@ -1,23 +1,26 @@
 import { getScopedDb } from "./context.js";
 
 interface MapboxDirectionsResponse {
-	routes: Array<{ distance: number }>;
+	routes: Array<{ distance: number; duration: number; }>;
 	code: string;
 	message?: string;
 }
 
-export async function fetchRouteDistanceMiles(
-	techCoords: { lat: number; lon: number } | null | undefined,
-	jobCoords: { lat: number; lon: number } | null | undefined,
-): Promise<number | null> {
+export type Coords = { lat: number; lon: number } | null | undefined;
+
+export async function fetchRoute(
+	startCoords: Coords, 
+	endCoords: Coords, 
+	profile: "driving" | "driving-traffic" = "driving"
+):Promise<{ distanceMeters: number; durationSeconds: number } | null> {
 	const token = process.env.MAPBOX_TOKEN;
-	if (!token || !techCoords?.lat || !techCoords?.lon || !jobCoords?.lat || !jobCoords?.lon) {
+	if (!token || !startCoords?.lat || !startCoords?.lon || !endCoords?.lat || !endCoords?.lon) {
 		if (!token) console.error("Missing MAPBOX_TOKEN; cannot fetch route distance.");
 		return null;
 	}
-	const coords = `${techCoords.lon},${techCoords.lat};${jobCoords.lon},${jobCoords.lat}`;
+	const coords = `${startCoords.lon},${startCoords.lat};${endCoords.lon},${endCoords.lat}`;
 	const url =
-		`https://api.mapbox.com/directions/v5/mapbox/driving/${coords}` +
+		`https://api.mapbox.com/directions/v5/mapbox/${profile}/${coords}` +
 		`?overview=false&access_token=${token}`;
 	const controller = new AbortController();
 	const timeoutId = setTimeout(() => controller.abort(), 8_000);
@@ -26,9 +29,19 @@ export async function fetchRouteDistanceMiles(
 		if (!resp.ok) return null;
 		const data = (await resp.json()) as MapboxDirectionsResponse;
 		if (data.code !== "Ok" || !data.routes.length) return null;
-		return data.routes[0].distance / 1609.34;
+		const distanceMeters = data.routes[0].distance;
+		const durationSeconds= data.routes[0].duration;
+		return { distanceMeters, durationSeconds}
 	} catch { return null; }
 	finally { clearTimeout(timeoutId); }
+}
+
+export async function fetchRouteDistanceMiles(
+	techCoords: Coords,
+	jobCoords: Coords,
+): Promise<number | null> {
+	const route = await fetchRoute(techCoords, jobCoords);
+    return route ? route.distanceMeters / 1609.34 : null;
 }
 
 export async function applyOdometerIncrement(sdb: ReturnType<typeof getScopedDb>, techId: string, miles: number) {
