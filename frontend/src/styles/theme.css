@@ -169,9 +169,14 @@
 	--color-sched-status-badge-bg:   rgba(59, 130, 246, 0.10);
 	--color-sched-status-badge-text: #1d4ed8;
 	--color-sched-open-ended-dash:   rgba(0, 0, 0, 0.22);
-
-	/* ── Calendar (schedule-x) ────────────────────────────────────────────── */
-	--color-cal-month-day: #475569;   /* slate-600 */
+	/* Week-card chips. Window tokens are slate, deliberately NOT --color-primary: per-org accents
+	   must not restyle them, and a blue chip would read as a button. */
+	--color-sched-chip-bg:          rgba(15, 23, 42, 0.06);
+	--color-sched-chip-text:        #334155;   /* slate-700 */
+	--color-sched-window-chip-bg:   rgba(100, 116, 139, 0.16);
+	--color-sched-window-chip-text: #3b5068;   /* muted slate-blue */
+	--color-sched-window-tick:      rgba(71, 85, 105, 0.55);
+	--color-sched-open-ended-fade:  rgba(0, 0, 0, 0.10);
 
 	/* ── Chart tokens ─────────────────────────────────────────────────────── */
 	--color-chart-primary:  #2563eb;
@@ -312,9 +317,12 @@
 	--color-grid-today-tint:  rgba(59, 130, 246, 0.04);
 	--color-grid-float-bg:    #09090b;   /* was --color-canvas */
 	--color-sched-open-ended-dash:   rgba(255, 255, 255, 0.38);
-
-	/* Calendar */
-	--color-cal-month-day: #d4d4d8;
+	--color-sched-chip-bg:          rgba(255, 255, 255, 0.07);
+	--color-sched-chip-text:        rgba(255, 255, 255, 0.78);
+	--color-sched-window-chip-bg:   rgba(148, 163, 184, 0.16);   /* slate-400 */
+	--color-sched-window-chip-text: #b6c6da;
+	--color-sched-window-tick:      rgba(148, 163, 184, 0.60);
+	--color-sched-open-ended-fade:  rgba(0, 0, 0, 0.32);
 
 	/* Charts */
 	--color-chart-fallback: #3f3f46;

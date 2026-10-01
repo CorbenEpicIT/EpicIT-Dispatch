@@ -5,7 +5,7 @@ import ReschedulePopup from "./ReschedulePopup";
 import OccurrenceReschedulePopup from "./OccurrenceReschedulePopup";
 import VisitClickPopup from "./VisitClickPopup";
 import OccurrenceClickPopup from "./OccurrenceClickPopup";
-import { visitStartLabel, visitEndLabel, getPriorityColor, SCROLL_ZONE_W, SCROLL_DELAY_MS } from "./scheduleBoardUtils";
+import { visitStartLabel, visitEndLabel, getPriorityColor, SCROLL_ZONE_W, SCROLL_DELAY_MS, localDateKey, getAnchoredPopupPos, CLICK_POPUP_H } from "./scheduleBoardUtils";
 import { formatTime } from "./dashboardCalendarUtils";
 import type { UpdateJobVisitInput } from "../../../types/jobs";
 import type { Technician } from "../../../types/technicians";
@@ -132,17 +132,8 @@ interface ClickedVisit {
 	rect: DOMRect;
 }
 
-const POPUP_W = 224;
-
 function getPopupPos(rect: DOMRect): { top: number; left: number } {
-	const vp = { w: window.innerWidth, h: window.innerHeight };
-	const PAD = 8;
-	const spaceRight = vp.w - rect.right - PAD;
-	const left = spaceRight >= POPUP_W
-		? rect.right + 4
-		: Math.max(PAD, rect.left - POPUP_W - 4);
-	const top = Math.max(PAD, Math.min(rect.top, vp.h - 260 - PAD));
-	return { top, left };
+	return getAnchoredPopupPos(rect, { popupH: CLICK_POPUP_H });
 }
 
 export default function MonthGrid({
@@ -889,7 +880,7 @@ export default function MonthGrid({
 			{/* Click-reschedule: visit (clock button) */}
 			{pendingClickReschedule?.type === "visit" && pendingClickReschedule.visit && (() => {
 				const v  = pendingClickReschedule.visit;
-				const nd = new Date(v.scheduled_start_at).toISOString().split("T")[0];
+				const nd = localDateKey(v.scheduled_start_at);
 				return (
 					<ReschedulePopup
 						visit={v}
@@ -915,7 +906,7 @@ export default function MonthGrid({
 			{/* Click-reschedule: occurrence (clock button) */}
 			{pendingClickReschedule?.type === "occurrence" && pendingClickReschedule.occurrence && (() => {
 				const occ = pendingClickReschedule.occurrence;
-				const nd  = new Date(occ.occurrence_start_at).toISOString().split("T")[0];
+				const nd  = localDateKey(occ.occurrence_start_at);
 				return (
 					<OccurrenceReschedulePopup
 						occurrence={occ}

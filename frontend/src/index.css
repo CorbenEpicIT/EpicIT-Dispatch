@@ -2,6 +2,22 @@
 @import "tailwindcss";
 @import "./styles/theme.css";
 
+/* Tailwind 4 preflight leaves buttons at cursor:default. Inline/utility cursors
+   (e.g. grab on draggable cards) still win over this base layer. */
+@layer base {
+	button:not(:disabled),
+	[role="button"]:not([aria-disabled="true"]),
+	label[for],
+	summary {
+		cursor: pointer;
+	}
+
+	button:disabled,
+	[role="button"][aria-disabled="true"] {
+		cursor: not-allowed;
+	}
+}
+
 :root {
 	--main: var(--color-base);
 	/* Animation-only vars — intentionally mirror primary; not Tailwind tokens */

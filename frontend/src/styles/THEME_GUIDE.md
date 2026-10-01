@@ -352,12 +352,6 @@ Two rules when touching these:
 - `--color-grid-cell-muted` must never be brighter than an in-month cell. It was `--color-base`
   (`#ffffff`), which made out-of-month days the most prominent thing on the grid.
 
-### Calendar (schedule-x)
-
-| Token | Light | Dark | Usage |
-|---|---|---|---|
-| `--color-cal-month-day` | `#475569` | `#d4d4d8` | Month view day number text |
-
 ### Charts
 
 | Token | Light | Dark | Usage |
