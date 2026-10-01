@@ -75,6 +75,7 @@ export default function MonthMiniCard({
 	return (
 		<div
 			draggable={!!onDragStart}
+			className="focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-1!"
 			role={onClick ? "button" : undefined}
 			tabIndex={onClick ? 0 : undefined}
 			onDragStart={onDragStart}
@@ -103,8 +104,8 @@ export default function MonthMiniCard({
 				opacity: isDragging ? 0.4 : isGhost ? 0.5 : 1,
 				userSelect: "none",
 				flexShrink: 0,
-				outline: isGhost ? "1px dashed var(--color-primary)" : "none",
-				outlineOffset: isGhost ? "1px" : "0",
+				outline: isGhost ? "1px dashed var(--color-primary)" : undefined,
+				outlineOffset: isGhost ? "1px" : undefined,
 				boxShadow: isGhost
 					? "inset 0 0 0 999px var(--color-primary-bg-dim)"
 					: undefined,
