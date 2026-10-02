@@ -47,6 +47,8 @@ export interface RecordMapTechRow {
 	color: string | null;
 	/** Closed visit: the tech's whereabouts are withheld, not unknown. */
 	positionHidden: boolean;
+	/** ISO time of the tech's last device ping; null when hidden or never pinged. */
+	lastPingAt?: string | null;
 }
 
 export interface RecordMapModel {
@@ -161,6 +163,7 @@ export function buildRecordMapModel(input: RecordMapInput): RecordMapModel {
 				coords: hidden ? null : coords,
 				color: routeHere?.color ?? null,
 				positionHidden: hidden,
+				lastPingAt: hidden ? null : (tech.last_ping_at ?? null),
 			};
 		});
 

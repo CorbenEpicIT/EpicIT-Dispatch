@@ -1,13 +1,16 @@
 import { useId, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Building2, Check, EyeOff, LocateFixed, MapPin } from "lucide-react";
+import { useNow } from "../../../hooks/useNow";
 import { usePermission } from "../../../hooks/usePermission";
+import { formatPulseAge, isPingLive } from "../../../lib/livePulse";
 import { formatEtaShort } from "../../../lib/mapMarkers";
 import type { RecordMapTechRow, VisitTechStatus } from "../../../lib/recordMap";
 import { VisitStatusColors, VisitStatusLabels, type VisitStatus } from "../../../types/jobs";
 import { TechnicianStatusDotColors, TechnicianStatusLabels } from "../../../types/technicians";
 import type { Coordinates } from "../../../types/location";
 import { formatShortDate } from "../../../util/util";
+import LiveDot from "./LiveDot";
 
 const METERS_PER_MILE = 1609.344;
 
@@ -54,17 +57,21 @@ export interface RecordMapRailProps {
 	tz?: string;
 }
 
-function techDetail(row: RecordMapTechRow): string {
+function techDetail(row: RecordMapTechRow, now: number): string {
+	// Only a stale tech gets an age; the pulsing dot already says "live".
+	const age = isPingLive(row.status, row.lastPingAt, now)
+		? null
+		: formatPulseAge(row.lastPingAt, now);
 	if (row.etaSeconds !== null) {
 		const miles =
 			row.distanceMeters !== null
 				? ` · ${(row.distanceMeters / METERS_PER_MILE).toFixed(1)} mi`
 				: "";
-		return `${formatEtaShort(row.etaSeconds)}${miles}`;
+		return `${formatEtaShort(row.etaSeconds)}${miles}${age ? ` · last seen ${age}` : ""}`;
 	}
-	if (row.drivingElsewhere) return "En route elsewhere";
+	if (row.drivingElsewhere) return age ? `En route elsewhere · last seen ${age}` : "En route elsewhere";
 	if (!row.coords) return "No location reported";
-	return "Last reported location";
+	return age ? `Last seen ${age}` : "Last reported location";
 }
 
 function LocateButton({
@@ -109,12 +116,14 @@ export function TechRow({
 	row: RecordMapTechRow;
 	onLocate: (c: Coordinates) => void;
 }) {
+	const now = useNow(10_000);
 	return (
 		<li className={ROW_GRID}>
 			<span className={SLOT}>
-				<span
-					aria-hidden="true"
-					className={`h-2 w-2 rounded-full ${TechnicianStatusDotColors[row.status]}`}
+				<LiveDot
+					status={row.status}
+					lastPingAt={row.lastPingAt}
+					dotClassName={TechnicianStatusDotColors[row.status]}
 					style={row.color ? { backgroundColor: row.color } : undefined}
 				/>
 			</span>
@@ -142,7 +151,7 @@ export function TechRow({
 					)}
 				</div>
 				{!row.positionHidden && (
-					<p className="text-xs text-text-tertiary">{techDetail(row)}</p>
+					<p className="text-xs text-text-tertiary">{techDetail(row, now)}</p>
 				)}
 			</div>
 			<span className={TRAIL}>
